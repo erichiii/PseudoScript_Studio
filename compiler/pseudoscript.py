@@ -110,9 +110,6 @@ def compile_line(source, symbol_table):
     ok = analyzer.analyze(ast, tree, parser.node_map)
     report["success"] = ok
 
-    # Annotated parse tree with semantic notes
-    parser.render_parse_tree(show_annotations=True)
-
     # Show incremental symbol table snapshots for each statement that changed it
     for snapshot in analyzer.snapshots:
         print_symbol_table(symbol_table, records=snapshot["records"], title=f"SYMBOL TABLE ({snapshot['label']})")

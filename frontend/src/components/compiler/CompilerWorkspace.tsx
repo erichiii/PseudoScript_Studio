@@ -73,8 +73,8 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
 
   return (
     <div className="rounded-[36px] border border-white/10 bg-[#05070f] p-4 shadow-[0_25px_60px_rgba(3,0,12,0.55)] lg:p-6">
-      <div className="grid gap-4 lg:grid-cols-2 lg:gap-0 lg:divide-x lg:divide-white/5">
-        <div className="lg:pr-4">
+      <div className="flex flex-col gap-4">
+        <div>
           <CodeEditor
             value={code}
             onChange={setCode}
@@ -84,7 +84,7 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
             onOpenCheatsheet={onOpenCheatsheet}
           />
         </div>
-        <div className="lg:pl-4">
+        <div>
           <OutputTabs
             output={output}
             isCompiling={isCompiling}
