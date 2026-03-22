@@ -4,6 +4,7 @@ import LandingPage from "./components/LandingPage";
 import DesktopHub, { type DesktopSelection } from "./components/DesktopHub";
 import CheatsheetView from "./components/CheatsheetView";
 import GameModeView from "./components/GameModeView";
+import CustomCursor from "./components/CustomCursor";
 
 type Page = "landing" | "desktop" | "compiler" | "cheatsheet" | "game";
 
@@ -65,6 +66,7 @@ function App() {
 
   return (
     <>
+      <CustomCursor />
       {currentPage === "landing" && <LandingPage onEnter={() => setCurrentPage("desktop")} />}
       {currentPage === "desktop" && (
         <DesktopHub
