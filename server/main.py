@@ -107,16 +107,29 @@ def compile_code(payload: CompileRequest):
         ]
 
         # Helper to convert parse tree nodes to Pydantic models
-        def convert_node(node):
+        def convert_node(node, *, include_annotations=False):
             if not hasattr(node, "label"):
                 return None
             children = None
             if hasattr(node, "children") and node.children:
-                children = [convert_node(child) for child in node.children]
+                children = [convert_node(child, include_annotations=include_annotations) for child in node.children]
                 children = [c for c in children if c is not None]
+
+            note = getattr(node, "note", None)
+            if include_annotations:
+                annotations = getattr(node, "annotations", []) or []
+                hint = getattr(node, "hint", None)
+                note_parts = []
+                if annotations:
+                    note_parts.append("; ".join(str(item) for item in annotations))
+                if hint and hint not in note_parts:
+                    note_parts.append(str(hint))
+                if note_parts:
+                    note = " | ".join(note_parts)
+
             return ParseTreeNodeModel(
                 label=node.label,
-                note=getattr(node, "note", None),
+                note=note,
                 children=children or None,
             )
 
@@ -125,6 +138,8 @@ def compile_code(payload: CompileRequest):
         if parse_tree and isinstance(parse_tree, list):
             converted = [convert_node(node) for node in parse_tree]
             parse_tree_payload = [n for n in converted if n is not None] or None
+            converted_annotated = [convert_node(node, include_annotations=True) for node in parse_tree]
+            annotated_tree_payload = [n for n in converted_annotated if n is not None] or None
 
         # Extract symbol table
         records = list(compiler.symbol_table.items())

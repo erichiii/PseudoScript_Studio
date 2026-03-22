@@ -174,7 +174,7 @@ const renderActiveTab = ({
         />
       );
     case "semantic":
-      return <SemanticTab logs={semanticLogs} fallbackOutput={output} />;
+      return <SemanticTab logs={semanticLogs} fallbackOutput={output} annotatedTree={annotatedTree} />;
     case "symbol":
       return <SymbolTableTab data={symbolTable} />;
     default:
@@ -556,60 +556,105 @@ const ParserTab = ({
 const SemanticTab = ({
   logs,
   fallbackOutput,
+  annotatedTree,
 }: {
   logs: string[];
   fallbackOutput: string;
+  annotatedTree: ParseTreeNode[];
 }) => {
   const filteredLogs = useMemo(() => filterSemanticLogs(logs), [logs]);
   const groupedLogs = useMemo(() => groupSemanticLogs(filteredLogs), [filteredLogs]);
   const hasLogs = groupedLogs.length > 0;
   const hasFallback = Boolean(fallbackOutput.trim());
+  const hasTree = annotatedTree.length > 0;
+  const [showAnnotatedTree, setShowAnnotatedTree] = useState(false);
 
   if (hasLogs) {
     return (
-      <div className="space-y-2">
-        {groupedLogs.map((text, index) => {
-          const firstLine = text.split("\n")[0] ?? text;
-          const severity = classifyLogLine(firstLine);
-          const bubbleClasses = parserBubbleClass(severity);
-          return (
-            <div key={`semantic-${index}`} className={clsx("rounded-2xl border px-4 py-3", bubbleClasses)}>
-              <span className="text-[0.6rem] uppercase tracking-[0.4em] text-white/60">Semantic</span>
-              <p className="mt-1 whitespace-pre-wrap font-mono text-xs">{text}</p>
-            </div>
-          );
-        })}
+      <div className="space-y-4">
+        <div className="space-y-2">
+          {groupedLogs.map((text, index) => {
+            const firstLine = text.split("\n")[0] ?? text;
+            const severity = classifyLogLine(firstLine);
+            const bubbleClasses = parserBubbleClass(severity);
+            return (
+              <div key={`semantic-${index}`} className={clsx("rounded-2xl border px-4 py-3", bubbleClasses)}>
+                <span className="text-[0.6rem] uppercase tracking-[0.4em] text-white/60">Semantic</span>
+                <p className="mt-1 whitespace-pre-wrap font-mono text-xs">{text}</p>
+              </div>
+            );
+          })}
+        </div>
+        {hasTree && (
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setShowAnnotatedTree((current) => !current)}
+              className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-white/80 transition hover:bg-white/20"
+            >
+              {showAnnotatedTree ? "Hide Annotated Parse Tree" : "Show Annotated Parse Tree"}
+            </button>
+            {showAnnotatedTree && <AnnotatedTreeDiagram nodes={annotatedTree} />}
+          </div>
+        )}
       </div>
     );
   }
 
   if (hasFallback) {
     return (
-      <pre className="rounded-2xl border border-white/10 bg-black/60 px-4 py-3 font-mono text-xs text-white/80">
-        {fallbackOutput}
-      </pre>
+      <div className="space-y-4">
+        <pre className="rounded-2xl border border-white/10 bg-black/60 px-4 py-3 font-mono text-xs text-white/80">
+          {fallbackOutput}
+        </pre>
+        {hasTree && (
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setShowAnnotatedTree((current) => !current)}
+              className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-white/80 transition hover:bg-white/20"
+            >
+              {showAnnotatedTree ? "Hide Annotated Parse Tree" : "Show Annotated Parse Tree"}
+            </button>
+            {showAnnotatedTree && <AnnotatedTreeDiagram nodes={annotatedTree} />}
+          </div>
+        )}
+      </div>
     );
   }
 
   return (
-    <p className="text-white/40">Semantic analyzer idle. Run the compiler to populate this tab.</p>
+    <div className="space-y-4">
+      <p className="text-white/40">Semantic analyzer idle. Run the compiler to populate this tab.</p>
+      {hasTree && (
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => setShowAnnotatedTree((current) => !current)}
+            className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-white/80 transition hover:bg-white/20"
+          >
+            {showAnnotatedTree ? "Hide Annotated Parse Tree" : "Show Annotated Parse Tree"}
+          </button>
+          {showAnnotatedTree && <AnnotatedTreeDiagram nodes={annotatedTree} />}
+        </div>
+      )}
+    </div>
   );
 };
 
-const AnnotatedTreeCard = ({ nodes }: { nodes: ParseTreeNode[] }) => (
-  <div className="rounded-2xl border border-white/10 bg-[#0e1222]/80 p-4">
-    <p className="text-[0.6rem] uppercase tracking-[0.4em] text-white/50">Annotated Parse Tree</p>
-    {nodes.length > 0 ? (
-      <div className="mt-3 space-y-3 text-sm text-white/85">
-        {nodes.map((node) => (
-          <TreeNode key={`semantic-tree-${node.label}`} node={node} depth={0} showNotes />
-        ))}
+const AnnotatedTreeDiagram = ({ nodes }: { nodes: ParseTreeNode[] }) => {
+  const diagramDefinition = useMemo(() => buildMermaidGraph(nodes, true), [nodes]);
+  const hasNodes = nodes.length > 0;
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#0e1222]/80 p-4">
+      <p className="text-[0.6rem] uppercase tracking-[0.4em] text-white/50">Annotated Parse Tree</p>
+      <div className="mt-4 max-h-[60vh] overflow-auto rounded-2xl border border-white/10 bg-[#0a0d17]/80 p-4">
+        <ParseTreeDiagram diagram={diagramDefinition} hasNodes={hasNodes} />
       </div>
-    ) : (
-      <p className="mt-3 text-sm text-white/50">Tree will appear after a successful run.</p>
-    )}
-  </div>
-);
+    </div>
+  );
+};
 
 const TreeTab = ({ title, nodes, showNotes }: { title: string; nodes: ParseTreeNode[]; showNotes?: boolean }) => (
   <div className="space-y-3">
@@ -780,7 +825,7 @@ const ParseTreeDiagram = ({
   return <div className="mermaid" dangerouslySetInnerHTML={{ __html: svg }} />;
 };
 
-const buildMermaidGraph = (nodes: ParseTreeNode[]): string => {
+const buildMermaidGraph = (nodes: ParseTreeNode[], includeNotes = false): string => {
   if (!nodes.length) {
     return "graph TD\nempty[\"Awaiting parse tree\"]";
   }
@@ -790,7 +835,8 @@ const buildMermaidGraph = (nodes: ParseTreeNode[]): string => {
 
   const traverse = (node: ParseTreeNode, parentId?: string) => {
     const nodeId = `node_${counter++}`;
-    lines.push(`${nodeId}[\"${escapeMermaid(node.label)}\"]`);
+    const label = includeNotes && node.note ? `${node.label}<br/>${node.note}` : node.label;
+    lines.push(`${nodeId}[\"${escapeMermaid(label)}\"]`);
     if (parentId) {
       lines.push(`${parentId}-->${nodeId}`);
     }
