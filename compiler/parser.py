@@ -59,7 +59,7 @@ class ParseTreeNode:
             for idx, note in enumerate(self.annotations):
                 is_last_annot = (idx == len(self.annotations) - 1) and not self.children
                 annot_connector = "└─ " if is_last_annot else "├─ "
-                print(f"{child_prefix}{annot_connector}📝 {note}")
+                print(f"{child_prefix}{annot_connector}{note}")
         
         # Recursively render children
         for idx, child in enumerate(self.children):

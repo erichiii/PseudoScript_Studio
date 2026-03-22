@@ -4,9 +4,6 @@ import { compilePseudoScript } from "../../lib/api";
 import {
   randomSnippets,
   starterCode,
-  sampleParseTree,
-  sampleAnnotatedTree,
-  sampleSymbolTable,
 } from "./data";
 import CodeEditor from "./CodeEditor";
 import OutputTabs from "./OutputTabs";
@@ -22,12 +19,18 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
   const [error, setError] = useState<string | null>(null);
   const [lastSuccess, setLastSuccess] = useState<boolean | null>(null);
   const [tokens, setTokens] = useState<{ type: string; value: string }[]>([]);
+  const [parseTree, setParseTree] = useState<any[]>([]);
+  const [annotatedTree, setAnnotatedTree] = useState<any[]>([]);
+  const [symbolTable, setSymbolTable] = useState<any | null>(null);
 
   const handleCompile = async () => {
     if (!code.trim()) {
       setError("Write some PseudoScript before running the compiler.");
       setOutput("");
       setLastSuccess(null);
+      setParseTree([]);
+      setAnnotatedTree([]);
+      setSymbolTable(null);
       return;
     }
 
@@ -42,10 +45,16 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
         value: String(token.value ?? ""),
       }));
       setTokens(normalizedTokens);
+      setParseTree(response.parseTree ?? []);
+      setAnnotatedTree(response.annotatedTree ?? []);
+      setSymbolTable(response.symbolTable ?? null);
     } catch (err) {
       setLastSuccess(false);
       setOutput("");
       setError(err instanceof Error ? err.message : "Failed to run compiler.");
+      setParseTree([]);
+      setAnnotatedTree([]);
+      setSymbolTable(null);
     } finally {
       setIsCompiling(false);
     }
@@ -57,6 +66,9 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
     setOutput("Random starter code loaded. Tap run to see it in action.");
     setError(null);
     setLastSuccess(null);
+    setParseTree([]);
+    setAnnotatedTree([]);
+    setSymbolTable(null);
   };
 
   return (
@@ -79,9 +91,9 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
             error={error}
             success={lastSuccess}
             tokens={tokens}
-            parseTree={sampleParseTree}
-            annotatedTree={sampleAnnotatedTree}
-            symbolTable={sampleSymbolTable}
+            parseTree={parseTree}
+            annotatedTree={annotatedTree}
+            symbolTable={symbolTable}
           />
         </div>
       </div>

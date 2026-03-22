@@ -40,15 +40,15 @@ type OutputTabsProps = {
   tokens: Token[];
   parseTree: ParseTreeNode[];
   annotatedTree: ParseTreeNode[];
-  symbolTable: SymbolTableData;
+  symbolTable: SymbolTableData | null;
 };
 
-type TabId = "lexer" | "parser" | "annotated" | "symbol";
+type TabId = "lexer" | "parser" | "semantic" | "symbol";
 
 const tabs: { id: TabId; label: string }[] = [
   { id: "lexer", label: "Lexer" },
   { id: "parser", label: "Parser" },
-  { id: "annotated", label: "Annotated Tree" },
+  { id: "semantic", label: "Semantic" },
   { id: "symbol", label: "Symbol Table" },
 ];
 
@@ -67,7 +67,7 @@ const OutputTabs = ({
   const hasParseTree = parseTree.length > 0;
   const statusLabel = success === null ? "idle" : success ? "success" : "failed";
   const statusColor = success === null ? "bg-white/30" : success ? "bg-emerald-400" : "bg-rose-400";
-  const { lexerLogs, parserLogs, lexerStatusLogs } = splitCompilerLog(output);
+  const { lexerLogs, parserLogs, lexerStatusLogs, semanticLogs } = splitCompilerLog(output);
 
   useEffect(() => {
     if (!isCompiling) {
@@ -113,6 +113,7 @@ const OutputTabs = ({
           lexerLogs,
           lexerStatusLogs,
           parserLogs,
+          semanticLogs,
           tokens,
           annotatedTree,
           symbolTable,
@@ -134,6 +135,7 @@ const renderActiveTab = ({
   lexerLogs,
   lexerStatusLogs,
   parserLogs,
+  semanticLogs,
   tokens,
   annotatedTree,
   symbolTable,
@@ -147,9 +149,10 @@ const renderActiveTab = ({
   lexerLogs: string[];
   lexerStatusLogs: string[];
   parserLogs: string[];
+  semanticLogs: string[];
   tokens: Token[];
   annotatedTree: ParseTreeNode[];
-  symbolTable: SymbolTableData;
+  symbolTable: SymbolTableData | null;
   isCompiling?: boolean;
   error?: string | null;
   hasParseTree?: boolean;
@@ -170,8 +173,8 @@ const renderActiveTab = ({
           onOpenParseTree={onOpenParseTree}
         />
       );
-    case "annotated":
-      return <TreeTab title="Annotated Tree" nodes={annotatedTree} showNotes />;
+    case "semantic":
+      return <SemanticTab logs={semanticLogs} fallbackOutput={output} />;
     case "symbol":
       return <SymbolTableTab data={symbolTable} />;
     default:
@@ -284,8 +287,15 @@ const LexerTab = ({
   );
 };
 
-const classifyParserLine = (line: string): "error" | "success" | "info" => {
-  if (/no\s+\w*\s*errors?/i.test(line) || /no structural errors?/i.test(line) || /completed|success/i.test(line)) {
+const classifyLogLine = (line: string): "error" | "success" | "info" => {
+  if (
+    /no\s+\w*\s*errors?/i.test(line) ||
+    /no structural errors?/i.test(line) ||
+    /completed|success/i.test(line) ||
+    /types? match/i.test(line) ||
+    /no coercion needed/i.test(line) ||
+    /variables? .*declared/i.test(line)
+  ) {
     return "success";
   }
   if (/error|mismatch|unexpected|invalid/i.test(line)) {
@@ -307,14 +317,15 @@ const parserBubbleClass = (severity: "error" | "success" | "info") => {
   return "border-white/15 bg-black/50 text-white/85";
 };
 
+const TREE_LINE_REGEX = /^[\s|│├┤┬┴┼└┌\-•⋅∙·]+/;
+const SYMBOL_HEADER_REGEX = /^name\s+type\s+scope/i;
+const SYMBOL_ROW_REGEX = /^[a-z_][a-z0-9_]*\s+\w+\s+\d+\s+\d+/i;
+const MEMORY_ROW_REGEX = /^-\s*[A-Z]+.*byte/i;
+
 const filterParserLogs = (logs: string[]): string[] => {
   let skippingTree = false;
   let skippingSymbol = false;
   let skippingMemory = false;
-  const treeLineRegex = /^[\s|│├┤┬┴┼└┌\-•⋅∙·]+/;
-  const symbolHeaderRegex = /^name\s+type\s+scope/i;
-  const symbolRowRegex = /^[a-z_][a-z0-9_]*\s+\w+\s+\d+\s+\d+/i;
-  const memoryRowRegex = /^-\s*[A-Z]+.*byte/i;
   return logs.filter((line) => {
     const normalized = line.replace(/^\[PARSER\]\s*/i, "").trim();
     if (!normalized) {
@@ -330,7 +341,7 @@ const filterParserLogs = (logs: string[]): string[] => {
     }
 
     if (skippingTree) {
-      if (treeLineRegex.test(normalized)) {
+      if (TREE_LINE_REGEX.test(normalized)) {
         return false;
       }
       skippingTree = false;
@@ -342,7 +353,7 @@ const filterParserLogs = (logs: string[]): string[] => {
     }
 
     if (skippingSymbol) {
-      if (symbolHeaderRegex.test(normalized) || symbolRowRegex.test(normalized)) {
+      if (SYMBOL_HEADER_REGEX.test(normalized) || SYMBOL_ROW_REGEX.test(normalized)) {
         return false;
       }
       skippingSymbol = false;
@@ -354,7 +365,7 @@ const filterParserLogs = (logs: string[]): string[] => {
     }
 
     if (skippingMemory) {
-      if (memoryRowRegex.test(normalized)) {
+      if (MEMORY_ROW_REGEX.test(normalized)) {
         return false;
       }
       skippingMemory = false;
@@ -366,6 +377,83 @@ const filterParserLogs = (logs: string[]): string[] => {
 
     return true;
   });
+};
+
+const filterSemanticLogs = (logs: string[]): string[] => {
+  let skippingSymbol = false;
+  let skippingMemory = false;
+  return logs.filter((line) => {
+    const normalized = line.replace(/^\[SEMANTIC[S]?\]\s*/i, "").trim();
+    if (!normalized) {
+      skippingSymbol = false;
+      skippingMemory = false;
+      return false;
+    }
+
+    if (/^symbol table/i.test(normalized)) {
+      skippingSymbol = true;
+      return false;
+    }
+
+    if (skippingSymbol) {
+      if (SYMBOL_HEADER_REGEX.test(normalized) || SYMBOL_ROW_REGEX.test(normalized)) {
+        return false;
+      }
+      skippingSymbol = false;
+    }
+
+    if (/total memory per scope/i.test(normalized)) {
+      skippingMemory = true;
+      return false;
+    }
+
+    if (skippingMemory) {
+      if (MEMORY_ROW_REGEX.test(normalized)) {
+        return false;
+      }
+      skippingMemory = false;
+    }
+
+    return true;
+  });
+};
+
+const groupSemanticLogs = (logs: string[]): string[] => {
+  const grouped: string[] = [];
+  let collectingTree = false;
+  let treeLines: string[] = [];
+  const isTreeContinuation = (line: string) => /^(│|├|└|┌|┬|┴|┼|─|\s|•|[|]|-)/.test(line.trim());
+
+  const pushTree = () => {
+    if (treeLines.length) {
+      grouped.push(treeLines.join("\n"));
+      treeLines = [];
+    }
+    collectingTree = false;
+  };
+
+  logs.forEach((line) => {
+    const cleaned = line.replace(/^\[SEMANTIC[S]?\]\s*/i, "").trim();
+    if (/parse tree/i.test(cleaned)) {
+      pushTree();
+      collectingTree = true;
+      treeLines.push(cleaned);
+      return;
+    }
+
+    if (collectingTree) {
+      if (isTreeContinuation(cleaned)) {
+        treeLines.push(cleaned);
+        return;
+      }
+      pushTree();
+    }
+
+    grouped.push(cleaned || line);
+  });
+
+  pushTree();
+  return grouped;
 };
 
 const ParserTab = ({
@@ -409,7 +497,7 @@ const ParserTab = ({
         <div className="space-y-2">
           {filteredLogs.map((line, index) => {
           const cleaned = line.replace(/^\[PARSER\]\s*/i, "");
-          const severity = classifyParserLine(cleaned);
+          const severity = classifyLogLine(cleaned);
           const bubbleClasses = parserBubbleClass(severity);
           const isStructureCheck = /checking\s+statement\s+structure/i.test(cleaned);
           if (isStructureCheck) {
@@ -465,6 +553,64 @@ const ParserTab = ({
   return <p className="text-white/40">Parser ready. Write some code on the left and hit Run to see the syntax logs.</p>;
 };
 
+const SemanticTab = ({
+  logs,
+  fallbackOutput,
+}: {
+  logs: string[];
+  fallbackOutput: string;
+}) => {
+  const filteredLogs = useMemo(() => filterSemanticLogs(logs), [logs]);
+  const groupedLogs = useMemo(() => groupSemanticLogs(filteredLogs), [filteredLogs]);
+  const hasLogs = groupedLogs.length > 0;
+  const hasFallback = Boolean(fallbackOutput.trim());
+
+  if (hasLogs) {
+    return (
+      <div className="space-y-2">
+        {groupedLogs.map((text, index) => {
+          const firstLine = text.split("\n")[0] ?? text;
+          const severity = classifyLogLine(firstLine);
+          const bubbleClasses = parserBubbleClass(severity);
+          return (
+            <div key={`semantic-${index}`} className={clsx("rounded-2xl border px-4 py-3", bubbleClasses)}>
+              <span className="text-[0.6rem] uppercase tracking-[0.4em] text-white/60">Semantic</span>
+              <p className="mt-1 whitespace-pre-wrap font-mono text-xs">{text}</p>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (hasFallback) {
+    return (
+      <pre className="rounded-2xl border border-white/10 bg-black/60 px-4 py-3 font-mono text-xs text-white/80">
+        {fallbackOutput}
+      </pre>
+    );
+  }
+
+  return (
+    <p className="text-white/40">Semantic analyzer idle. Run the compiler to populate this tab.</p>
+  );
+};
+
+const AnnotatedTreeCard = ({ nodes }: { nodes: ParseTreeNode[] }) => (
+  <div className="rounded-2xl border border-white/10 bg-[#0e1222]/80 p-4">
+    <p className="text-[0.6rem] uppercase tracking-[0.4em] text-white/50">Annotated Parse Tree</p>
+    {nodes.length > 0 ? (
+      <div className="mt-3 space-y-3 text-sm text-white/85">
+        {nodes.map((node) => (
+          <TreeNode key={`semantic-tree-${node.label}`} node={node} depth={0} showNotes />
+        ))}
+      </div>
+    ) : (
+      <p className="mt-3 text-sm text-white/50">Tree will appear after a successful run.</p>
+    )}
+  </div>
+);
+
 const TreeTab = ({ title, nodes, showNotes }: { title: string; nodes: ParseTreeNode[]; showNotes?: boolean }) => (
   <div className="space-y-3">
     <p className="text-xs uppercase tracking-[0.4em] text-white/40">{title}</p>
@@ -490,50 +636,56 @@ const TreeNode = ({ node, depth, showNotes }: { node: ParseTreeNode; depth: numb
   </div>
 );
 
-const SymbolTableTab = ({ data }: { data: SymbolTableData }) => (
-  <div className="space-y-4 text-sm text-white/85">
-    <div>
-      <p className="text-xs uppercase tracking-[0.4em] text-white/40">Entries</p>
-      <div className="mt-2 overflow-hidden rounded-2xl border border-white/10 bg-[#0e1222]">
-        <table className="w-full text-left text-[0.75rem]">
-          <thead className="bg-white/5 text-white/60">
-            <tr>
-              <th className="px-4 py-2 font-semibold">Name</th>
-              <th className="px-4 py-2 font-semibold">Type</th>
-              <th className="px-4 py-2 font-semibold">Scope</th>
-              <th className="px-4 py-2 font-semibold">Bytes</th>
-              <th className="px-4 py-2 font-semibold">Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.entries.map((entry) => (
-              <tr key={entry.name} className="border-t border-white/5 text-white/80">
-                <td className="px-4 py-2 font-semibold">{entry.name}</td>
-                <td className="px-4 py-2">{entry.type}</td>
-                <td className="px-4 py-2">{entry.scope}</td>
-                <td className="px-4 py-2">{entry.bytes}</td>
-                <td className="px-4 py-2 font-mono text-xs">{String(entry.value)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+const SymbolTableTab = ({ data }: { data: SymbolTableData | null }) => {
+  if (!data) {
+    return <p className="text-white/40">Symbol table will appear after a successful compilation.</p>;
+  }
 
-    <div>
-      <p className="text-xs uppercase tracking-[0.4em] text-white/40">Scopes</p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {data.scopes.map((scope) => (
-          <div key={scope.level} className="rounded-2xl border border-white/10 bg-[#13182c] px-4 py-3">
-            <p className="text-sm font-semibold text-white">{scope.label}</p>
-            <p className="text-xs text-white/60">Level {scope.level}</p>
-            <p className="text-xs text-white/60">Memory: {scope.memory} bytes</p>
-          </div>
-        ))}
+  return (
+    <div className="space-y-4 text-sm text-white/85">
+      <div>
+        <p className="text-xs uppercase tracking-[0.4em] text-white/40">Entries</p>
+        <div className="mt-2 overflow-hidden rounded-2xl border border-white/10 bg-[#0e1222]">
+          <table className="w-full text-left text-[0.75rem]">
+            <thead className="bg-white/5 text-white/60">
+              <tr>
+                <th className="px-4 py-2 font-semibold">Name</th>
+                <th className="px-4 py-2 font-semibold">Type</th>
+                <th className="px-4 py-2 font-semibold">Scope</th>
+                <th className="px-4 py-2 font-semibold">Bytes</th>
+                <th className="px-4 py-2 font-semibold">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.entries.map((entry) => (
+                <tr key={entry.name} className="border-t border-white/5 text-white/80">
+                  <td className="px-4 py-2 font-semibold">{entry.name}</td>
+                  <td className="px-4 py-2">{entry.type}</td>
+                  <td className="px-4 py-2">{entry.scope}</td>
+                  <td className="px-4 py-2">{entry.bytes}</td>
+                  <td className="px-4 py-2 font-mono text-xs">{String(entry.value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs uppercase tracking-[0.4em] text-white/40">Scopes</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {data.scopes.map((scope) => (
+            <div key={scope.level} className="rounded-2xl border border-white/10 bg-[#13182c] px-4 py-3">
+              <p className="text-sm font-semibold text-white">{scope.label}</p>
+              <p className="text-xs text-white/60">Level {scope.level}</p>
+              <p className="text-xs text-white/60">Memory: {scope.memory} bytes</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const ParseTreeModal = ({ nodes, onClose }: { nodes: ParseTreeNode[]; onClose: () => void }) => {
   const diagramDefinition = useMemo(() => buildMermaidGraph(nodes), [nodes]);
@@ -691,22 +843,27 @@ const splitCompilerLog = (log: string): {
   lexerLogs: string[];
   lexerStatusLogs: string[];
   parserLogs: string[];
+  semanticLogs: string[];
 } => {
   const lines = log ? log.split(/\r?\n/) : [];
   const buckets = {
     lexerLogs: [] as string[],
     lexerStatusLogs: [] as string[],
     parserLogs: [] as string[],
+    semanticLogs: [] as string[],
   };
-  let currentPhase: "lexer" | "parser" | null = null;
+  let currentPhase: "lexer" | "parser" | "semantic" | null = null;
 
-  const detectPhase = (line: string): "lexer" | "parser" | null => {
+  const detectPhase = (line: string): "lexer" | "parser" | "semantic" | null => {
     const upper = line.toUpperCase();
     if (upper.includes("LEXER") || upper.includes("LEXICAL")) {
       return "lexer";
     }
     if (upper.includes("PARSER") || upper.includes("SYNTAX")) {
       return "parser";
+    }
+    if (upper.includes("SEMANTIC")) {
+      return "semantic";
     }
     return null;
   };
@@ -770,7 +927,28 @@ const splitCompilerLog = (log: string): {
         return;
       }
 
+      if (/^symbol table/i.test(cleaned) || SYMBOL_HEADER_REGEX.test(cleaned) || SYMBOL_ROW_REGEX.test(cleaned)) {
+        buckets.semanticLogs.push(cleaned);
+        return;
+      }
+
+      if (/total memory per scope/i.test(cleaned) || MEMORY_ROW_REGEX.test(cleaned)) {
+        buckets.semanticLogs.push(cleaned);
+        return;
+      }
+
       buckets.parserLogs.push(cleaned);
+    } else if (bucketKey === "semantic") {
+      const cleaned = line.replace(/^\[SEMANTIC[S]?\]\s*/i, "").trim();
+      if (!cleaned) {
+        return;
+      }
+      const upper = cleaned.toUpperCase();
+      if (upper === "STARTING SEMANTIC ANALYSIS" || upper === "SEMANTIC ANALYSIS" || /────/.test(cleaned)) {
+        return;
+      }
+
+      buckets.semanticLogs.push(cleaned);
     }
   });
 

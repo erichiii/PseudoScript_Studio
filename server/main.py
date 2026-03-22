@@ -33,10 +33,41 @@ class TokenModel(BaseModel):
     value: str
 
 
+class ParseTreeNodeModel(BaseModel):
+    label: str
+    note: str | None = None
+    children: list["ParseTreeNodeModel"] | None = None
+
+
+class SymbolTableEntryModel(BaseModel):
+    name: str
+    type: str
+    scope: int
+    bytes: int
+    value: str | int | bool
+
+
+class SymbolScopeModel(BaseModel):
+    level: int
+    label: str
+    memory: int
+
+
+class SymbolTableModel(BaseModel):
+    entries: list[SymbolTableEntryModel]
+    scopes: list[SymbolScopeModel]
+
+
 class CompileResponse(BaseModel):
     success: bool
     output: str
     tokens: list[TokenModel]
+    parseTree: list[ParseTreeNodeModel] | None = None
+    annotatedTree: list[ParseTreeNodeModel] | None = None
+    symbolTable: SymbolTableModel | None = None
+
+
+ParseTreeNodeModel.model_rebuild()
 
 
 @app.get("/health")
@@ -63,14 +94,46 @@ def compile_code(payload: CompileRequest):
     success = bool(report.get("success")) if isinstance(report, dict) else False
 
     tokens_payload: list[TokenModel] = []
+    parse_tree_payload: list[ParseTreeNodeModel] | None = None
+    annotated_tree_payload: list[ParseTreeNodeModel] | None = None
+    symbol_table_payload: SymbolTableModel | None = None
+
     if isinstance(report, dict):
+        # Extract tokens
         raw_tokens = report.get("tokens") or []
         tokens_payload = [
             TokenModel(type=getattr(token, "type", str(token)), value=str(getattr(token, "value", "")))
             for token in raw_tokens
         ]
 
-    return CompileResponse(success=success, output=output_text, tokens=tokens_payload)
+        # Helper to convert parse tree nodes to Pydantic models
+        def convert_node(node):
+            if not hasattr(node, "label"):
+                return None
+            children = None
+            if hasattr(node, "children") and node.children:
+                children = [convert_node(child) for child in node.children]
+                children = [c for c in children if c is not None]
+            return ParseTreeNodeModel(
+                label=node.label,
+                note=getattr(node, "note", None),
+                children=children or None,
+            )
+
+        # Extract parse tree
+        parse_tree = report.get("parse_tree") or []
+        if parse_tree and isinstance(parse_tree, list):
+            converted = [convert_node(node) for node in parse_tree]
+            parse_tree_payload = [n for n in converted if n is not None] or None
+
+    return CompileResponse(
+        success=success,
+        output=output_text,
+        tokens=tokens_payload,
+        parseTree=parse_tree_payload,
+        annotatedTree=annotated_tree_payload,
+        symbolTable=symbol_table_payload,
+    )
 
 
 @app.post("/reset")
