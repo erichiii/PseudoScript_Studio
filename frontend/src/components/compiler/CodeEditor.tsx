@@ -1,15 +1,12 @@
-import { useState } from "react";
+import type { ChangeEvent } from "react";
 
 type CodeEditorProps = {
-  initialValue: string;
+  value: string;
   onChange?: (value: string) => void;
 };
 
-const CodeEditor = ({ initialValue, onChange }: CodeEditorProps) => {
-  const [value, setValue] = useState(initialValue);
-
-  const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setValue(event.target.value);
+const CodeEditor = ({ value, onChange }: CodeEditorProps) => {
+  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     onChange?.(event.target.value);
   };
 

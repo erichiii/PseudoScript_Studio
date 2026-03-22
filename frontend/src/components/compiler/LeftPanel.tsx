@@ -1,15 +1,17 @@
 import CodeEditor from "./CodeEditor";
 import ControlButtons from "./ControlButtons";
 import PhaseCard from "./PhaseCard";
-import { starterCode } from "./data";
 
 type LeftPanelProps = {
-  onCodeChange?: (value: string) => void;
+  code: string;
+  onCodeChange: (value: string) => void;
+  onCompile: () => void;
+  isCompiling?: boolean;
 };
 
-const LeftPanel = ({ onCodeChange }: LeftPanelProps) => (
+const LeftPanel = ({ code, onCodeChange, onCompile, isCompiling }: LeftPanelProps) => (
   <div className="space-y-6">
-    <CodeEditor initialValue={starterCode} onChange={onCodeChange} />
+    <CodeEditor value={code} onChange={onCodeChange} />
     <PhaseCard
       title="Current Phase"
       emoji="🔤"
@@ -22,7 +24,7 @@ const LeftPanel = ({ onCodeChange }: LeftPanelProps) => (
       description="[PARSER] Once tokenization is clean, I'll build a parse tree showing how your statements connect."
       status="Syntax Analysis"
     />
-    <ControlButtons />
+    <ControlButtons onCompile={onCompile} isCompiling={isCompiling} />
   </div>
 );
 

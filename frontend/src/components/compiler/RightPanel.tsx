@@ -1,16 +1,14 @@
-import { useState } from "react";
 import OutputTabs from "./OutputTabs";
 
-type TabId = "lexer" | "parser" | "semantic" | "symbol" | "errors";
-
 type RightPanelProps = {
-  defaultTab?: TabId;
+  output: string;
+  isCompiling?: boolean;
+  error?: string | null;
+  success?: boolean | null;
 };
 
-const RightPanel = ({ defaultTab = "lexer" }: RightPanelProps) => {
-  const [activeTab, setActiveTab] = useState<TabId>(defaultTab);
-
-  return <OutputTabs activeTab={activeTab} onTabChange={setActiveTab} />;
-};
+const RightPanel = ({ output, isCompiling, error, success }: RightPanelProps) => (
+  <OutputTabs output={output} isCompiling={isCompiling} error={error} success={success} />
+);
 
 export default RightPanel;
