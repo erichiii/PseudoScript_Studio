@@ -5,6 +5,27 @@ else
     show "Too young".
 `;
 
+export const randomSnippets = [
+  `whole counter is 0.
+while counter < 5
+    show "Counting: " + counter.
+    increase counter by 1.
+`,
+  `text petName is "Pixel".
+whole treats is 3.
+while treats > 0
+    show petName + " does a trick!".
+    decrease treats by 1.
+show "All done!".
+`,
+  `whole start is 2.
+whole end is 10.
+step by 2 from start to end
+    show "Even: " + start.
+    increase start by 2.
+`,
+];
+
 export const sampleTokens = [
   { type: "DATATYPE", value: "whole" },
   { type: "IDENTIFIER", value: "age" },
