@@ -44,7 +44,7 @@ class SymbolTableEntryModel(BaseModel):
     type: str
     scope: int
     bytes: int
-    value: str | int | bool
+    value: str | int | float | bool | None
 
 
 class SymbolScopeModel(BaseModel):
@@ -125,6 +125,28 @@ def compile_code(payload: CompileRequest):
         if parse_tree and isinstance(parse_tree, list):
             converted = [convert_node(node) for node in parse_tree]
             parse_tree_payload = [n for n in converted if n is not None] or None
+
+        # Extract symbol table
+        records = list(compiler.symbol_table.items())
+        entries = [
+            SymbolTableEntryModel(
+                name=name,
+                type=info.get("datatype", ""),
+                scope=int(info.get("scope", 0)),
+                bytes=int(info.get("bytes", 0)),
+                value=info.get("value"),
+            )
+            for name, info in records
+        ]
+        scopes = [
+            SymbolScopeModel(
+                level=scope,
+                label="GLOBAL" if scope == 0 else f"LEVEL {scope}",
+                memory=total,
+            )
+            for scope, total in compiler.symbol_table.memory_per_scope().items()
+        ]
+        symbol_table_payload = SymbolTableModel(entries=entries, scopes=scopes)
 
     return CompileResponse(
         success=success,
