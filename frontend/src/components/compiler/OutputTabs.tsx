@@ -64,6 +64,7 @@ const OutputTabs = ({
 }: OutputTabsProps) => {
   const [activeTab, setActiveTab] = useState<TabId>("lexer");
   const [isParseTreeOpen, setIsParseTreeOpen] = useState(false);
+  const hasParseTree = parseTree.length > 0;
   const statusLabel = success === null ? "idle" : success ? "success" : "failed";
   const statusColor = success === null ? "bg-white/30" : success ? "bg-emerald-400" : "bg-rose-400";
   const { lexerLogs, parserLogs, lexerStatusLogs } = splitCompilerLog(output);
@@ -97,14 +98,7 @@ const OutputTabs = ({
             </button>
           ))}
         </div>
-        <div className="ml-auto flex items-center gap-3 text-[0.55rem] tracking-[0.2em]">
-          <button
-            type="button"
-            onClick={() => setIsParseTreeOpen(true)}
-            className="rounded-full border border-white/15 bg-white/10 px-3 py-1 font-semibold text-white/80 transition hover:bg-white/20"
-          >
-            Parse Tree
-          </button>
+        <div className="ml-auto flex items-center gap-2 text-[0.55rem] tracking-[0.2em]">
           <span className="flex items-center gap-2">
             <span className={clsx("h-2 w-2 rounded-full", statusColor)} />
             {statusLabel}
@@ -124,6 +118,8 @@ const OutputTabs = ({
           symbolTable,
           isCompiling,
           error,
+          hasParseTree,
+          onOpenParseTree: hasParseTree ? () => setIsParseTreeOpen(true) : undefined,
         })}
       </div>
 
@@ -143,6 +139,8 @@ const renderActiveTab = ({
   symbolTable,
   isCompiling,
   error,
+  hasParseTree,
+  onOpenParseTree,
 }: {
   activeTab: TabId;
   output: string;
@@ -154,6 +152,8 @@ const renderActiveTab = ({
   symbolTable: SymbolTableData;
   isCompiling?: boolean;
   error?: string | null;
+  hasParseTree?: boolean;
+  onOpenParseTree?: () => void;
 }) => {
   switch (activeTab) {
     case "lexer":
@@ -165,6 +165,9 @@ const renderActiveTab = ({
           fallbackOutput={output}
           isCompiling={isCompiling}
           error={error}
+          tokens={tokens}
+          hasParseTree={hasParseTree}
+          onOpenParseTree={onOpenParseTree}
         />
       );
     case "annotated":
@@ -282,10 +285,13 @@ const LexerTab = ({
 };
 
 const classifyParserLine = (line: string): "error" | "success" | "info" => {
+  if (/no\s+\w*\s*errors?/i.test(line) || /no structural errors?/i.test(line) || /completed|success/i.test(line)) {
+    return "success";
+  }
   if (/error|mismatch|unexpected|invalid/i.test(line)) {
     return "error";
   }
-  if (/found|accept|completed|success/i.test(line)) {
+  if (/found|accept/i.test(line)) {
     return "success";
   }
   return "info";
@@ -301,20 +307,88 @@ const parserBubbleClass = (severity: "error" | "success" | "info") => {
   return "border-white/15 bg-black/50 text-white/85";
 };
 
+const filterParserLogs = (logs: string[]): string[] => {
+  let skippingTree = false;
+  let skippingSymbol = false;
+  let skippingMemory = false;
+  const treeLineRegex = /^[\s|│├┤┬┴┼└┌\-•⋅∙·]+/;
+  const symbolHeaderRegex = /^name\s+type\s+scope/i;
+  const symbolRowRegex = /^[a-z_][a-z0-9_]*\s+\w+\s+\d+\s+\d+/i;
+  const memoryRowRegex = /^-\s*[A-Z]+.*byte/i;
+  return logs.filter((line) => {
+    const normalized = line.replace(/^\[PARSER\]\s*/i, "").trim();
+    if (!normalized) {
+      skippingTree = false;
+      skippingSymbol = false;
+      skippingMemory = false;
+      return false;
+    }
+
+    if (/^parse tree/i.test(normalized)) {
+      skippingTree = true;
+      return false;
+    }
+
+    if (skippingTree) {
+      if (treeLineRegex.test(normalized)) {
+        return false;
+      }
+      skippingTree = false;
+    }
+
+    if (/^symbol table/i.test(normalized)) {
+      skippingSymbol = true;
+      return false;
+    }
+
+    if (skippingSymbol) {
+      if (symbolHeaderRegex.test(normalized) || symbolRowRegex.test(normalized)) {
+        return false;
+      }
+      skippingSymbol = false;
+    }
+
+    if (/total memory per scope/i.test(normalized)) {
+      skippingMemory = true;
+      return false;
+    }
+
+    if (skippingMemory) {
+      if (memoryRowRegex.test(normalized)) {
+        return false;
+      }
+      skippingMemory = false;
+    }
+
+    if (/semantic/i.test(normalized)) {
+      return false;
+    }
+
+    return true;
+  });
+};
+
 const ParserTab = ({
   logs,
   fallbackOutput,
   isCompiling,
   error,
+  tokens,
+  hasParseTree,
+  onOpenParseTree,
 }: {
   logs: string[];
   fallbackOutput: string;
   isCompiling?: boolean;
   error?: string | null;
+  tokens: Token[];
+  hasParseTree?: boolean;
+  onOpenParseTree?: () => void;
 }) => {
-  const hasLogs = logs.length > 0;
+  const filteredLogs = useMemo(() => filterParserLogs(logs), [logs]);
+  const hasVisibleLogs = filteredLogs.length > 0;
   const hasFallback = Boolean(fallbackOutput.trim());
-
+  const statements = useMemo(() => buildStatementsFromTokens(tokens), [tokens]);
   if (isCompiling) {
     return <p className="animate-pulse text-white/60">Running lexer → parser → semantic analyzer...</p>;
   }
@@ -327,20 +401,55 @@ const ParserTab = ({
     );
   }
 
-  if (hasLogs) {
+  if (hasVisibleLogs) {
+    let activeStatementIdx = -1;
+    let activeStatement: string | null = null;
     return (
-      <div className="space-y-2">
-        {logs.map((line, index) => {
+      <div className="space-y-4">
+        <div className="space-y-2">
+          {filteredLogs.map((line, index) => {
           const cleaned = line.replace(/^\[PARSER\]\s*/i, "");
           const severity = classifyParserLine(cleaned);
           const bubbleClasses = parserBubbleClass(severity);
-          return (
-            <div key={`${cleaned}-${index}`} className={clsx("rounded-2xl border px-4 py-3", bubbleClasses)}>
-              <span className="text-[0.6rem] uppercase tracking-[0.4em] text-white/60">Parser</span>
-              <p className="mt-1 whitespace-pre-wrap font-mono text-xs">{cleaned || line}</p>
-            </div>
-          );
-        })}
+          const isStructureCheck = /checking\s+statement\s+structure/i.test(cleaned);
+          if (isStructureCheck) {
+            if (activeStatementIdx + 1 < statements.length) {
+              activeStatementIdx += 1;
+              activeStatement = statements[activeStatementIdx] ?? null;
+            }
+          }
+          const statementText = isStructureCheck ? activeStatement : null;
+          const statementNumber = statementText && activeStatementIdx > -1 ? activeStatementIdx + 1 : null;
+          const contentLines =
+            isStructureCheck && statementNumber
+              ? [
+                  `[PROCESSING] Statement ${statementNumber}: ${statementText ?? "(unavailable)"}`,
+                  cleaned || line,
+                ]
+              : [cleaned || line];
+            return (
+              <div key={`${cleaned}-${index}`} className={clsx("rounded-2xl border px-4 py-3", bubbleClasses)}>
+                <span className="text-[0.6rem] uppercase tracking-[0.4em] text-white/60">Parser</span>
+                {contentLines.map((text, idx) => (
+                  <p key={`${cleaned}-${index}-line-${idx}`} className="mt-1 whitespace-pre-wrap font-mono text-xs">
+                    {text}
+                  </p>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+        {hasParseTree && onOpenParseTree && (
+          <div>
+            <button
+              type="button"
+              onClick={onOpenParseTree}
+              className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-white/80 transition hover:bg-white/20"
+            >
+              Show Parse Tree
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -541,6 +650,42 @@ const buildMermaidGraph = (nodes: ParseTreeNode[]): string => {
 };
 
 const escapeMermaid = (value: string) => value.replace(/"/g, '\\"');
+
+const buildStatementsFromTokens = (tokens: Token[]): string[] => {
+  if (!tokens.length) {
+    return [];
+  }
+
+  const statements: string[] = [];
+  let current: string[] = [];
+
+  const flush = () => {
+    if (!current.length) {
+      return;
+    }
+    const joined = current
+      .join(" ")
+      .replace(/\s+([.,])/g, "$1")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (joined) {
+      statements.push(joined);
+    }
+    current = [];
+  };
+
+  tokens.forEach(({ value, type }) => {
+    if (value.trim()) {
+      current.push(value);
+    }
+    if (type === "DELIMITER" && value.trim() === ".") {
+      flush();
+    }
+  });
+
+  flush();
+  return statements;
+};
 
 const splitCompilerLog = (log: string): {
   lexerLogs: string[];
