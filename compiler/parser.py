@@ -90,6 +90,7 @@ class Parser:
         self.warnings = []
         self.ast = []
         self.tree_nodes = []
+        self.node_map = {}
         self._active_node = None
 
     # ── helpers ──────────────────────────────────────────────────────
@@ -172,6 +173,8 @@ class Parser:
                 if node:
                     self.tree_nodes.append(node)
                 if stmt:
+                    if node:
+                        self.node_map[id(stmt)] = node
                     self.ast.append(stmt)
             elif self.pos < len(self.tokens):
                 # Only raise an error if we still have tokens (not EOF)
@@ -560,6 +563,8 @@ class Parser:
                 if result:
                     stmt, node = result
                     if stmt:
+                        if node:
+                            self.node_map[id(stmt)] = node
                         block_stmts.append(stmt)
                     if node:
                         block_nodes.append(node)

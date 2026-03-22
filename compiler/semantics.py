@@ -26,6 +26,10 @@ class SemanticAnalyzer:
         self.errors = []
         self.parse_tree = []
         self._active_node = None
+        self.node_map = {}
+        self.snapshots = []
+        self._last_snapshot_records = []
+        self._statement_index = 0
 
     # ── type compatibility map ──────────────────────────────────────
     TYPE_MAP = {
@@ -43,7 +47,7 @@ class SemanticAnalyzer:
     }
 
     # ── main entry ──────────────────────────────────────────────────
-    def analyze(self, ast, parse_tree=None):
+    def analyze(self, ast, parse_tree=None, node_map=None):
         print()
         print("─" * 60)
         print("  STARTING SEMANTIC ANALYSIS")
@@ -52,28 +56,13 @@ class SemanticAnalyzer:
         print("  [SEMANTICS] Hello! I'm the Semantic Analyzer (you can call me Sage). I'll check meanings, types, and memory bindings.")
 
         self.parse_tree = parse_tree or []
+        self.node_map = node_map or {}
 
         for idx, stmt in enumerate(ast):
-            node = self.parse_tree[idx] if idx < len(self.parse_tree) else None
-            self._active_node = node
-            stype = stmt.get("type")
-            if stype == "declaration":
-                self._analyze_declaration(stmt)
-            elif stype == "reassignment":
-                self._analyze_reassignment(stmt)
-            elif stype == "show":
-                self._analyze_show(stmt)
-            elif stype == "inc_dec":
-                self._analyze_inc_dec(stmt)
-            elif stype in ("if", "elseif", "while"):
-                self._analyze_condition_block(stmt)
-            elif stype == "step":
-                self._analyze_step(stmt)
-            elif stype == "else":
-                print("  [SEMANTICS] 'else' block header -- no semantic checks needed.")
-            else:
-                print(f"  [SEMANTICS] Statement type '{stype}' -- no semantic action.")
-            self._active_node = None
+            node = self.node_map.get(id(stmt))
+            if node is None and idx < len(self.parse_tree):
+                node = self.parse_tree[idx]
+            self._analyze_statement(stmt, node)
 
         # ── summary ─────────────────────────────────────────────────
         if not self.errors:
@@ -84,6 +73,47 @@ class SemanticAnalyzer:
                 print(f"    - {e}")
 
         return len(self.errors) == 0
+
+    def _analyze_statement(self, stmt, node=None):
+        if stmt is None:
+            return
+        previous_node = self._active_node
+        if node is not None:
+            self._active_node = node
+
+        stype = stmt.get("type")
+        if stype == "declaration":
+            self._analyze_declaration(stmt)
+        elif stype == "reassignment":
+            self._analyze_reassignment(stmt)
+        elif stype == "show":
+            self._analyze_show(stmt)
+        elif stype == "inc_dec":
+            self._analyze_inc_dec(stmt)
+        elif stype in ("if", "elseif", "while"):
+            self._analyze_condition_block(stmt)
+        elif stype == "step":
+            self._analyze_step(stmt)
+        elif stype == "else":
+            print("  [SEMANTICS] 'else' block -- analyzing nested statements...")
+            self._annotate("Else block header processed.")
+            self.symbol_table.push_scope()
+            self._analyze_nested_block(stmt.get("block", []))
+            self.symbol_table.pop_scope()
+        else:
+            print(f"  [SEMANTICS] Statement type '{stype}' -- no semantic action.")
+
+        self._active_node = previous_node
+        self._capture_snapshot(stmt, self._statement_index)
+        self._statement_index += 1
+
+    def _analyze_nested_block(self, statements):
+        if not statements:
+            return
+        for inner in statements:
+            node = self.node_map.get(id(inner))
+            self._analyze_statement(inner, node)
+            # Nested statements count toward snapshots as they are processed inside _analyze_statement
 
     @staticmethod
     def announce_blocked(reason):
@@ -328,17 +358,53 @@ class SemanticAnalyzer:
 
         print(f"  [SEMANTICS] All variables in condition are declared.")
         self._annotate("Condition variables are valid.")
+        self.symbol_table.push_scope()
+        self._analyze_nested_block(stmt.get("block", []))
+        self.symbol_table.pop_scope()
+
+    def _capture_snapshot(self, stmt, index):
+        records = [(name, info.copy()) for name, info in self.symbol_table.items()]
+        if records == self._last_snapshot_records:
+            return
+        label = self._describe_statement(stmt, index)
+        self.snapshots.append({
+            "label": label,
+            "records": records,
+        })
+        self._last_snapshot_records = records
+
+    @staticmethod
+    def _describe_statement(stmt, index):
+        base = f"after statement {index + 1}"
+        if not stmt:
+            return base
+        stype = stmt.get("type", "statement")
+        if stype == "declaration":
+            return f"{base} (declare {stmt.get('identifier', '?')})"
+        if stype == "reassignment":
+            return f"{base} (reassign {stmt.get('identifier', '?')})"
+        if stype == "inc_dec":
+            return f"{base} ({stmt.get('action', 'update')} {stmt.get('identifier', '?')})"
+        if stype == "show":
+            return f"{base} (show)"
+        if stype in ("if", "elseif", "else", "while", "step"):
+            return f"{base} ({stype} block)"
+        return base
 
     # ── step loop ───────────────────────────────────────────────────
     def _analyze_step(self, stmt):
         print("  [SEMANTICS] 'step' loop -- checking loop parameters...")
 
+        self.symbol_table.push_scope()
         if "iter_var" in stmt and "iter_type" in stmt:
             var = stmt["iter_var"]
             dtype = stmt["iter_type"]
             self.symbol_table.declare(var, dtype, 0)
             print(f"  [SEMANTICS] Bound loop variable '{var}' as '{dtype}' in Symbol Table.")
             self._annotate(f"Loop variable '{var}' initialized as {dtype}.")
+
+        self._analyze_nested_block(stmt.get("block", []))
+        self.symbol_table.pop_scope()
 
         print(f"  [SEMANTICS] Step loop parameters are valid.")
         self._annotate("Step loop parameters are valid.")

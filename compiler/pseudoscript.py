@@ -21,6 +21,7 @@
 """
 
 import sys
+from collections import defaultdict
 
 try:  # Support both package and standalone execution
     from .lexer import Lexer
@@ -37,15 +38,23 @@ except ImportError:  # pragma: no cover - fallback for script execution
 # ═════════════════════════════════════════════════════════════════════
 #  SYMBOL TABLE PRINTER
 # ═════════════════════════════════════════════════════════════════════
-def print_symbol_table(symbol_table):
-    records = list(symbol_table.items())
+def print_symbol_table(symbol_table, *, records=None, title="SYMBOL TABLE"):
+    if records is None:
+        records = list(symbol_table.items())
+        totals = symbol_table.memory_per_scope()
+    else:
+        totals = defaultdict(int)
+        for _, info in records:
+            scope = info.get('scope', 0)
+            totals[scope] += info.get('bytes', 0)
+
     if not records:
         print("\n  Symbol Table is empty.")
         return
 
     print()
     print("─" * 60)
-    print("  SYMBOL TABLE")
+    print(f"  {title}")
     print("─" * 60)
     print(f"  {'Name':<16} {'Type':<10} {'Scope':<5} {'Bytes':<5} {'Value'}")
     print(f"  {'─'*16} {'─'*10} {'─'*5} {'─'*5} {'─'*20}")
@@ -57,7 +66,7 @@ def print_symbol_table(symbol_table):
         print(f"  {name:<16} {dtype:<10} {scope:<5} {memory:<5} {val!r}")
 
     print("\n  Total Memory per Scope:")
-    for scope, total in symbol_table.memory_per_scope().items():
+    for scope, total in sorted(totals.items()):
         label = "GLOBAL" if scope == 0 else f"LEVEL {scope}"
         print(f"    - {label}: {total} byte(s)")
     print()
@@ -91,17 +100,22 @@ def compile_line(source, symbol_table):
     ast, tree = parser.parse()
     report["ast"] = ast
     report["parse_tree"] = tree
+    report["node_map"] = parser.node_map
 
     if parser.errors:
         SemanticAnalyzer.announce_blocked("the syntax analysis phase reported structural errors")
         return report
 
     analyzer = SemanticAnalyzer(symbol_table)
-    ok = analyzer.analyze(ast, tree)
+    ok = analyzer.analyze(ast, tree, parser.node_map)
     report["success"] = ok
 
     # Annotated parse tree with semantic notes
     parser.render_parse_tree(show_annotations=True)
+
+    # Show incremental symbol table snapshots for each statement that changed it
+    for snapshot in analyzer.snapshots:
+        print_symbol_table(symbol_table, records=snapshot["records"], title=f"SYMBOL TABLE ({snapshot['label']})")
 
     print_symbol_table(symbol_table)
 
@@ -188,6 +202,8 @@ def repl():
 ║    - Type your code, pressing Enter between lines           ║
 ║    - Type 's' (alone) to submit and compile                 ║
 ║    - Type 'q' (alone) to quit the compiler                  ║
+║    - Type '<<' to step out one indent level                 ║
+║    - Type 'clear indent' to reset indentation               ║
 ║                                                             ║
 ║  Commands:                                                  ║
 ║    table   -> View the Symbol Table                         ║
@@ -217,30 +233,49 @@ def repl():
                 if line == 's':
                     break
                 
-                # Add automatic indentation if user didn't type it
                 stripped = line.lstrip()
+                stripped_lower = stripped.lower()
                 user_indent = len(line) - len(stripped)
-                
-                # If user typed content without indentation but we're at an indented level,
-                # automatically add indentation
-                if user_indent == 0 and indent_level > 0 and stripped:
-                    line = ("    " * indent_level) + stripped
-                
+
+                # Support commands to adjust indentation manually
+                if stripped_lower in {"<<", "dedent"}:
+                    indent_level = max(0, indent_level - 1)
+                    print(f"(indent level -> {indent_level})")
+                    continue
+                if stripped_lower in {"<<<", "reset indent", "clear indent"}:
+                    indent_level = 0
+                    print("(indent level reset to 0)")
+                    continue
+
+                # Skip empty lines but maintain current indentation context
+                if not stripped:
+                    continue
+
+                # Determine the target indentation to apply to this line
+                target_indent = indent_level
+                if stripped_lower.startswith("elseif") or stripped_lower.startswith("else"):
+                    target_indent = max(indent_level - 1, 0)
+
+                # If user left indentation empty but we're inside a block, auto-indent
+                if user_indent == 0 and target_indent > 0:
+                    line = ("    " * target_indent) + stripped
+                    user_indent = target_indent * 4
+
                 input_lines.append(line)
-                
-                # Update indentation level based on control structure keywords
-                if stripped and not stripped.startswith("show"):
-                    stripped_lower = stripped.lower()
-                    # Increase indent after control structure headers
-                    if any(stripped_lower.startswith(kw) for kw in ["if ", "while ", "step ", "for "]):
-                        if "then" in stripped_lower or ":" in stripped:
-                            indent_level += 1
-                    # Decrease indent after else/elseif
-                    elif stripped_lower.startswith("else"):
-                        pass  # else stays at same level as if
-                    # Check if line is back at lower indentation - means block ended
-                    elif user_indent < (indent_level - 1) * 4 and stripped:
-                        indent_level = user_indent // 4
+
+                # Decide indentation level for the next prompt
+                next_indent = indent_level
+                if stripped_lower and not stripped_lower.startswith("show"):
+                    opens_block = any(stripped_lower.startswith(kw) for kw in ["if", "while", "step", "for"])
+                    if opens_block and ("then" in stripped_lower or stripped_lower.startswith("while") or stripped_lower.startswith("step") or stripped_lower.startswith("for") or ":" in stripped):
+                        next_indent = target_indent + 1
+                    elif stripped_lower.startswith("elseif") or stripped_lower.startswith("else"):
+                        next_indent = target_indent + 1
+                if next_indent == indent_level:
+                    actual_indent = len(line) - len(line.lstrip())
+                    next_indent = max(0, actual_indent // 4)
+
+                indent_level = next_indent
 
             # Join lines and process
             user_input = "\n".join(input_lines).strip()
