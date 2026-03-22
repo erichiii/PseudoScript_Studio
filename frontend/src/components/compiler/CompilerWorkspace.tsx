@@ -36,6 +36,7 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
 
     setIsCompiling(true);
     setError(null);
+    setSymbolTable(null);
     try {
       const response = await compilePseudoScript(code);
       setOutput(response.output.trimEnd());

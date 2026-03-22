@@ -538,6 +538,13 @@ const humanizeSemanticLine = (line: string): string => {
   return trimmed;
 };
 
+const isSemanticErrorLine = (line: string): boolean => {
+  if (/no\s+\w*\s*errors?/i.test(line) || /no errors found/i.test(line)) {
+    return false;
+  }
+  return /error|mismatch|invalid/i.test(line);
+};
+
 const buildSemanticFailureMessage = (logs: string[]): string | null => {
   const mismatchLine = logs.find((line) => /type mismatch/i.test(line));
   if (mismatchLine) {
@@ -550,7 +557,7 @@ const buildSemanticFailureMessage = (logs: string[]): string | null => {
     }
     return `Semantic Analyzer detected a type mismatch. ${mismatchLine.trim()} That conflicts with PseudoScript assignment rules. Assignment blocked.`;
   }
-  if (logs.some((line) => /error|mismatch|invalid/i.test(line))) {
+  if (logs.some((line) => isSemanticErrorLine(line))) {
     return "Semantic Analyzer detected an error. That input conflicts with PseudoScript rules. Assignment blocked.";
   }
   return null;

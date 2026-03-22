@@ -83,6 +83,10 @@ def compile_code(payload: CompileRequest):
     if not source.strip():
         raise HTTPException(status_code=400, detail="Source code cannot be empty.")
 
+    # Ensure each API compile starts from a clean state.
+    # The interactive CLI can keep history, but web requests should be isolated.
+    compiler.reset()
+
     buffer = io.StringIO()
     try:
         with redirect_stdout(buffer):

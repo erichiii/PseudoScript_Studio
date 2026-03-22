@@ -667,6 +667,14 @@ class Parser:
             self._advance()
             node.add_child(ParseTreeNode("Colon: :"))
 
+        # Handle indented block if present (colon optional)
+        block_stmts = []
+        if self._peek_type() == TokenType.INDENT:
+            block_stmts, block_nodes = self._parse_indented_block()
+            for block_node in block_nodes:
+                node.add_child(block_node)
+            stmt["block"] = block_stmts
+
         if success and not self.errors:
             print("  [PARSER] Actual structure matches expected rule perfectly.")
 
