@@ -1,5 +1,11 @@
 # PseudoScript Studio
 
+## ✨ Features
+
+- **Landing Page**: Cute 3D computer asset with interactive zoom animation
+- **Compiler Workspace**: Full-stack compiler with live explainability logs
+- **Real-time Backend**: FastAPI integration for lexer, parser, and semantic analyzer phases
+
 ## Getting Started
 
 ### Backend (FastAPI)
@@ -28,7 +34,10 @@
 	```bash
 	npm run dev
 	```
-3. Visit `http://localhost:5173`. The compiler UI now streams real logs from the Python backend.
+3. Visit `http://localhost:5173`. 
+   - You'll see the landing page with a cute 3D computer.
+   - Click the computer or press **SPACEBAR** to enter the compiler workspace.
+   - The compiler UI now streams real logs from the Python backend.
 
 ### One-Command Dev Environment
 - Start both FastAPI and Vite from the `frontend` folder:
