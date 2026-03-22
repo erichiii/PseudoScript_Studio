@@ -1,5 +1,6 @@
 import clsx from "clsx";
-import { useEffect, useState } from "react";
+import mermaid from "mermaid";
+import { useEffect, useMemo, useState } from "react";
 
 type Token = {
   type: string;
@@ -39,17 +40,14 @@ type OutputTabsProps = {
   tokens: Token[];
   parseTree: ParseTreeNode[];
   annotatedTree: ParseTreeNode[];
-  semanticNotes: string[];
   symbolTable: SymbolTableData;
 };
 
-type TabId = "lexer" | "parser" | "parse-tree" | "semantic" | "annotated" | "symbol";
+type TabId = "lexer" | "parser" | "annotated" | "symbol";
 
 const tabs: { id: TabId; label: string }[] = [
   { id: "lexer", label: "Lexer" },
   { id: "parser", label: "Parser" },
-  { id: "parse-tree", label: "Parse Tree" },
-  { id: "semantic", label: "Semantic" },
   { id: "annotated", label: "Annotated Tree" },
   { id: "symbol", label: "Symbol Table" },
 ];
@@ -62,10 +60,10 @@ const OutputTabs = ({
   tokens,
   parseTree,
   annotatedTree,
-  semanticNotes,
   symbolTable,
 }: OutputTabsProps) => {
   const [activeTab, setActiveTab] = useState<TabId>("lexer");
+  const [isParseTreeOpen, setIsParseTreeOpen] = useState(false);
   const statusLabel = success === null ? "idle" : success ? "success" : "failed";
   const statusColor = success === null ? "bg-white/30" : success ? "bg-emerald-400" : "bg-rose-400";
   const { lexerLogs, parserLogs, lexerStatusLogs } = splitCompilerLog(output);
@@ -92,19 +90,26 @@ const OutputTabs = ({
               onClick={() => setActiveTab(id)}
               className={clsx(
                 "rounded-full px-3 py-1 text-[0.6rem] font-semibold tracking-[0.2em] transition",
-                activeTab === id
-                  ? "bg-white text-[#090c16]"
-                  : "bg-white/5 text-white/60 hover:bg-white/10"
+                activeTab === id ? "bg-white text-[#090c16]" : "bg-white/5 text-white/60 hover:bg-white/10"
               )}
             >
               {label}
             </button>
           ))}
         </div>
-        <span className="ml-auto flex items-center gap-2 text-[0.55rem] tracking-[0.2em]">
-          <span className={clsx("h-2 w-2 rounded-full", statusColor)} />
-          {statusLabel}
-        </span>
+        <div className="ml-auto flex items-center gap-3 text-[0.55rem] tracking-[0.2em]">
+          <button
+            type="button"
+            onClick={() => setIsParseTreeOpen(true)}
+            className="rounded-full border border-white/15 bg-white/10 px-3 py-1 font-semibold text-white/80 transition hover:bg-white/20"
+          >
+            Parse Tree
+          </button>
+          <span className="flex items-center gap-2">
+            <span className={clsx("h-2 w-2 rounded-full", statusColor)} />
+            {statusLabel}
+          </span>
+        </div>
       </div>
 
       <div className="border-t border-white/5 bg-[#05070f] px-6 py-5 text-sm leading-relaxed text-[#cdd5f5]">
@@ -115,14 +120,14 @@ const OutputTabs = ({
           lexerStatusLogs,
           parserLogs,
           tokens,
-          parseTree,
           annotatedTree,
-          semanticNotes,
           symbolTable,
           isCompiling,
           error,
         })}
       </div>
+
+      {isParseTreeOpen && <ParseTreeModal nodes={parseTree} onClose={() => setIsParseTreeOpen(false)} />}
     </div>
   );
 };
@@ -134,9 +139,7 @@ const renderActiveTab = ({
   lexerStatusLogs,
   parserLogs,
   tokens,
-  parseTree,
   annotatedTree,
-  semanticNotes,
   symbolTable,
   isCompiling,
   error,
@@ -147,9 +150,7 @@ const renderActiveTab = ({
   lexerStatusLogs: string[];
   parserLogs: string[];
   tokens: Token[];
-  parseTree: ParseTreeNode[];
   annotatedTree: ParseTreeNode[];
-  semanticNotes: string[];
   symbolTable: SymbolTableData;
   isCompiling?: boolean;
   error?: string | null;
@@ -166,10 +167,6 @@ const renderActiveTab = ({
           error={error}
         />
       );
-    case "parse-tree":
-      return <TreeTab title="Syntax Tree" nodes={parseTree} />;
-    case "semantic":
-      return <SemanticTab notes={semanticNotes} />;
     case "annotated":
       return <TreeTab title="Annotated Tree" nodes={annotatedTree} showNotes />;
     case "symbol":
@@ -188,11 +185,11 @@ const LexerTab = ({
   statusLogs: string[];
   tokens: Token[];
 }) => {
-  const hasLexicalError = statusLogs.some((line) =>
-    /(invalid|unknown|lexical|lexer error)/i.test(line) && !/no errors found/i.test(line)
+  const hasLexicalError = statusLogs.some(
+    (line) => /(invalid|unknown|lexical|lexer error)/i.test(line) && !/no errors found/i.test(line)
   );
-  const hasLexicalSuccess = statusLogs.some((line) =>
-    /successfully generated tokens/i.test(line) || /no errors found/i.test(line)
+  const hasLexicalSuccess = statusLogs.some(
+    (line) => /successfully generated tokens/i.test(line) || /no errors found/i.test(line)
   );
 
   return (
@@ -215,26 +212,35 @@ const LexerTab = ({
 
       <div>
         <p className="text-xs uppercase tracking-[0.4em] text-white/40">Lexeme Table</p>
-        <div className="mt-2 overflow-hidden rounded-2xl border border-white/10 bg-[#0e1222]">
-          <table className="w-full text-left text-[0.75rem]">
-            <thead className="bg-white/5 text-white/60">
-              <tr>
-                <th className="px-4 py-2 font-semibold">#</th>
-                <th className="px-4 py-2 font-semibold">Lexeme</th>
-                <th className="px-4 py-2 font-semibold">Token Type</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tokens.map((token, index) => (
-                <tr key={`${token.type}-${token.value}-${index}`} className="border-t border-white/5 text-white/80">
-                  <td className="px-4 py-2 text-white/50">{index + 1}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-white/90">{token.value}</td>
-                  <td className="px-4 py-2 font-semibold">{token.type}</td>
+        {tokens.length > 0 ? (
+          <div className="mt-2 overflow-hidden rounded-2xl border border-white/10 bg-[#0e1222]">
+            <table className="w-full text-left text-[0.75rem]">
+              <thead className="bg-white/5 text-white/60">
+                <tr>
+                  <th className="px-4 py-2 font-semibold">#</th>
+                  <th className="px-4 py-2 font-semibold">Lexeme</th>
+                  <th className="px-4 py-2 font-semibold">Token Type</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {tokens.map((token, index) => (
+                  <tr
+                    key={`${token.type}-${token.value}-${index}`}
+                    className="border-t border-white/5 text-white/80"
+                  >
+                    <td className="px-4 py-2 text-white/50">{index + 1}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-white/90">{token.value}</td>
+                    <td className="px-4 py-2 font-semibold">{token.type}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="mt-2 rounded-2xl border border-dashed border-white/15 bg-[#0e1222]/70 px-4 py-6 text-sm text-white/50">
+            Run the compiler to generate the lexeme table.
+          </div>
+        )}
       </div>
 
       {statusLogs.length > 0 && (
@@ -275,6 +281,26 @@ const LexerTab = ({
   );
 };
 
+const classifyParserLine = (line: string): "error" | "success" | "info" => {
+  if (/error|mismatch|unexpected|invalid/i.test(line)) {
+    return "error";
+  }
+  if (/found|accept|completed|success/i.test(line)) {
+    return "success";
+  }
+  return "info";
+};
+
+const parserBubbleClass = (severity: "error" | "success" | "info") => {
+  if (severity === "error") {
+    return "border-rose-500/40 bg-rose-500/5 text-rose-100";
+  }
+  if (severity === "success") {
+    return "border-emerald-500/30 bg-emerald-500/5 text-emerald-100";
+  }
+  return "border-white/15 bg-black/50 text-white/85";
+};
+
 const ParserTab = ({
   logs,
   fallbackOutput,
@@ -294,18 +320,25 @@ const ParserTab = ({
   }
 
   if (error) {
-    return <p className="whitespace-pre-wrap font-mono text-xs text-rose-200">{error}</p>;
+    return (
+      <p className="rounded-2xl border border-rose-500/30 bg-rose-500/5 px-4 py-3 font-mono text-xs text-rose-100">
+        {error}
+      </p>
+    );
   }
 
   if (hasLogs) {
     return (
       <div className="space-y-2">
         {logs.map((line, index) => {
-          const message = line.replace(/^\[PARSER\]\s*/i, "");
+          const cleaned = line.replace(/^\[PARSER\]\s*/i, "");
+          const severity = classifyParserLine(cleaned);
+          const bubbleClasses = parserBubbleClass(severity);
           return (
-            <pre key={`${line}-${index}`} className="whitespace-pre-wrap font-mono text-xs text-[#cdd5f5]">
-              {message || line}
-            </pre>
+            <div key={`${cleaned}-${index}`} className={clsx("rounded-2xl border px-4 py-3", bubbleClasses)}>
+              <span className="text-[0.6rem] uppercase tracking-[0.4em] text-white/60">Parser</span>
+              <p className="mt-1 whitespace-pre-wrap font-mono text-xs">{cleaned || line}</p>
+            </div>
           );
         })}
       </div>
@@ -313,14 +346,14 @@ const ParserTab = ({
   }
 
   if (hasFallback) {
-    return <pre className="whitespace-pre-wrap font-mono text-xs text-[#cdd5f5]">{fallbackOutput}</pre>;
+    return (
+      <pre className="rounded-2xl border border-white/10 bg-black/60 px-4 py-3 font-mono text-xs text-emerald-100">
+        {fallbackOutput}
+      </pre>
+    );
   }
 
-  return (
-    <p className="text-white/40">
-      Parser ready. Write some code on the left and hit Run to see the syntax and semantic logs.
-    </p>
-  );
+  return <p className="text-white/40">Parser ready. Write some code on the left and hit Run to see the syntax logs.</p>;
 };
 
 const TreeTab = ({ title, nodes, showNotes }: { title: string; nodes: ParseTreeNode[]; showNotes?: boolean }) => (
@@ -345,19 +378,6 @@ const TreeNode = ({ node, depth, showNotes }: { node: ParseTreeNode; depth: numb
         ))}
       </div>
     )}
-  </div>
-);
-
-const SemanticTab = ({ notes }: { notes: string[] }) => (
-  <div className="space-y-3">
-    <p className="text-xs uppercase tracking-[0.4em] text-white/40">Semantic Analyzer</p>
-    <ul className="space-y-2 text-sm text-white/80">
-      {notes.map((note) => (
-        <li key={note} className="rounded-xl border border-white/10 bg-[#0d111f] px-4 py-2 font-mono text-xs">
-          {note}
-        </li>
-      ))}
-    </ul>
   </div>
 );
 
@@ -405,6 +425,122 @@ const SymbolTableTab = ({ data }: { data: SymbolTableData }) => (
     </div>
   </div>
 );
+
+const ParseTreeModal = ({ nodes, onClose }: { nodes: ParseTreeNode[]; onClose: () => void }) => {
+  const diagramDefinition = useMemo(() => buildMermaidGraph(nodes), [nodes]);
+  const hasNodes = nodes.length > 0;
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} aria-hidden />
+      <div className="relative flex h-full w-full items-center justify-center px-4 py-10">
+        <div className="relative w-full max-w-4xl rounded-3xl border border-white/10 bg-[#05070f] p-6 text-white shadow-2xl">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[0.65rem] uppercase tracking-[0.4em] text-white/40">Modal</p>
+              <h2 className="text-2xl font-semibold text-white">Parse Tree</h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-white/20 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-white/70 transition hover:bg-white/10"
+            >
+              Close
+            </button>
+          </div>
+          <p className="mt-2 text-sm text-white/70">
+            Visual representation generated with Mermaid. Run the parser to refresh the structure.
+          </p>
+          <div className="mt-6 max-h-[60vh] overflow-auto rounded-2xl border border-white/10 bg-[#0a0d17]/80 p-4">
+            <ParseTreeDiagram diagram={diagramDefinition} hasNodes={hasNodes} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ParseTreeDiagram = ({
+  diagram,
+  hasNodes,
+}: {
+  diagram: string;
+  hasNodes: boolean;
+}) => {
+  const [svg, setSvg] = useState<string>("");
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [diagramId] = useState(() => `parseTree-${Math.random().toString(36).slice(2)}`);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!hasNodes) {
+      setSvg("");
+      setRenderError("Parse tree will appear after a successful run.");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const renderDiagram = async () => {
+      try {
+        mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose" });
+        const { svg } = await mermaid.render(diagramId, diagram);
+        if (!cancelled) {
+          setSvg(svg);
+          setRenderError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setRenderError("Unable to render parse tree diagram.");
+        }
+      }
+    };
+
+    renderDiagram();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [diagram, diagramId, hasNodes]);
+
+  if (renderError) {
+    return (
+      <p className="rounded-2xl border border-dashed border-white/15 bg-[#0e1222]/80 px-4 py-6 text-sm text-white/60">
+        {renderError}
+      </p>
+    );
+  }
+
+  if (!svg) {
+    return <p className="text-sm text-white/60">Generating diagram...</p>;
+  }
+
+  return <div className="mermaid" dangerouslySetInnerHTML={{ __html: svg }} />;
+};
+
+const buildMermaidGraph = (nodes: ParseTreeNode[]): string => {
+  if (!nodes.length) {
+    return "graph TD\nempty[\"Awaiting parse tree\"]";
+  }
+
+  let counter = 0;
+  const lines = ["graph TD"];
+
+  const traverse = (node: ParseTreeNode, parentId?: string) => {
+    const nodeId = `node_${counter++}`;
+    lines.push(`${nodeId}[\"${escapeMermaid(node.label)}\"]`);
+    if (parentId) {
+      lines.push(`${parentId}-->${nodeId}`);
+    }
+    node.children?.forEach((child) => traverse(child, nodeId));
+  };
+
+  nodes.forEach((node) => traverse(node));
+  return lines.join("\n");
+};
+
+const escapeMermaid = (value: string) => value.replace(/"/g, '\\"');
 
 const splitCompilerLog = (log: string): {
   lexerLogs: string[];
@@ -481,9 +617,15 @@ const splitCompilerLog = (log: string): {
       buckets.lexerLogs.push(cleaned);
     } else if (bucketKey === "parser") {
       const cleaned = line.replace(/^\[PARSER\]\s*/i, "").trim();
-      if (cleaned) {
-        buckets.parserLogs.push(cleaned);
+      if (!cleaned) {
+        return;
       }
+      const upper = cleaned.toUpperCase();
+      if (upper === "STARTING SYNTAX ANALYSIS" || upper === "SYNTAX ANALYSIS" || /────/.test(cleaned)) {
+        return;
+      }
+
+      buckets.parserLogs.push(cleaned);
     }
   });
 

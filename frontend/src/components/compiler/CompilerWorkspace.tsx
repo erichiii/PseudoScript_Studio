@@ -4,10 +4,8 @@ import { compilePseudoScript } from "../../lib/api";
 import {
   randomSnippets,
   starterCode,
-  sampleTokens,
   sampleParseTree,
   sampleAnnotatedTree,
-  sampleSemanticNotes,
   sampleSymbolTable,
 } from "./data";
 import CodeEditor from "./CodeEditor";
@@ -23,7 +21,7 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
   const [isCompiling, setIsCompiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSuccess, setLastSuccess] = useState<boolean | null>(null);
-  const [tokens, setTokens] = useState(sampleTokens);
+  const [tokens, setTokens] = useState<{ type: string; value: string }[]>([]);
 
   const handleCompile = async () => {
     if (!code.trim()) {
@@ -83,7 +81,6 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
             tokens={tokens}
             parseTree={sampleParseTree}
             annotatedTree={sampleAnnotatedTree}
-            semanticNotes={sampleSemanticNotes}
             symbolTable={sampleSymbolTable}
           />
         </div>
