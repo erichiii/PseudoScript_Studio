@@ -1,7 +1,15 @@
 import { useState } from "react";
 
 import { compilePseudoScript } from "../../lib/api";
-import { randomSnippets, starterCode } from "./data";
+import {
+  randomSnippets,
+  starterCode,
+  sampleTokens,
+  sampleParseTree,
+  sampleAnnotatedTree,
+  sampleSemanticNotes,
+  sampleSymbolTable,
+} from "./data";
 import CodeEditor from "./CodeEditor";
 import OutputTabs from "./OutputTabs";
 
@@ -15,6 +23,7 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
   const [isCompiling, setIsCompiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSuccess, setLastSuccess] = useState<boolean | null>(null);
+  const [tokens, setTokens] = useState(sampleTokens);
 
   const handleCompile = async () => {
     if (!code.trim()) {
@@ -30,6 +39,11 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
       const response = await compilePseudoScript(code);
       setOutput(response.output.trimEnd());
       setLastSuccess(response.success);
+      const normalizedTokens = response.tokens.map((token) => ({
+        type: token.type,
+        value: String(token.value ?? ""),
+      }));
+      setTokens(normalizedTokens);
     } catch (err) {
       setLastSuccess(false);
       setOutput("");
@@ -61,7 +75,17 @@ const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
           />
         </div>
         <div className="lg:pl-4">
-          <OutputTabs output={output} isCompiling={isCompiling} error={error} success={lastSuccess} />
+          <OutputTabs
+            output={output}
+            isCompiling={isCompiling}
+            error={error}
+            success={lastSuccess}
+            tokens={tokens}
+            parseTree={sampleParseTree}
+            annotatedTree={sampleAnnotatedTree}
+            semanticNotes={sampleSemanticNotes}
+            symbolTable={sampleSymbolTable}
+          />
         </div>
       </div>
     </div>

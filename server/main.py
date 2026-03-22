@@ -28,9 +28,15 @@ class CompileRequest(BaseModel):
     source: str
 
 
+class TokenModel(BaseModel):
+    type: str
+    value: str
+
+
 class CompileResponse(BaseModel):
     success: bool
     output: str
+    tokens: list[TokenModel]
 
 
 @app.get("/health")
@@ -55,7 +61,16 @@ def compile_code(payload: CompileRequest):
 
     output_text = buffer.getvalue()
     success = bool(report.get("success")) if isinstance(report, dict) else False
-    return CompileResponse(success=success, output=output_text)
+
+    tokens_payload: list[TokenModel] = []
+    if isinstance(report, dict):
+        raw_tokens = report.get("tokens") or []
+        tokens_payload = [
+            TokenModel(type=getattr(token, "type", str(token)), value=str(getattr(token, "value", "")))
+            for token in raw_tokens
+        ]
+
+    return CompileResponse(success=success, output=output_text, tokens=tokens_payload)
 
 
 @app.post("/reset")

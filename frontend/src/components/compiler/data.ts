@@ -54,6 +54,28 @@ export const sampleParseTree = [
   },
 ];
 
+export const sampleAnnotatedTree = [
+  {
+    label: "Declaration",
+    note: "Semantic pass annotates storage and type info",
+    children: [
+      { label: "Datatype: whole", note: "4 bytes" },
+      { label: "Identifier: age", note: "scope GLOBAL" },
+      { label: "Assignment: is" },
+      { label: "Literal: 20", note: "constant" },
+    ],
+  },
+  {
+    label: "If Statement",
+    note: "Control flow node",
+    children: [
+      { label: "Condition: age > 18", note: "comparison" },
+      { label: "Block: show \"Access granted\"", note: "reachable" },
+      { label: "Else Block: show \"Too young\"", note: "reachable" },
+    ],
+  },
+];
+
 export const sampleSemanticNotes = [
   "[SEMANTICS] Variable 'age' bound at GLOBAL scope (4 bytes).",
   "[SEMANTICS] Condition variables validated.",
