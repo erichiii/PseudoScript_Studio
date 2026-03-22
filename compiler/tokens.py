@@ -40,6 +40,8 @@ class TokenType:
     TIMES           = "TIMES"
     INCREASE        = "INCREASE"
     DECREASE        = "DECREASE"
+    INDENT          = "INDENT"
+    DEDENT          = "DEDENT"
     UNKNOWN         = "UNKNOWN"
 
 

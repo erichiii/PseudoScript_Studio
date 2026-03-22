@@ -204,14 +204,43 @@ def repl():
             # Get multi-line input from the user
             print("\nEnter lines of code. Type 's' to submit, or 'q' to quit:")
             input_lines = []
+            indent_level = 0  # Track current indentation level
+            
             while True:
-                line = input("  ") if input_lines else input("ps> ")
+                # Calculate prompt based on current indentation level
+                prompt = "    " * indent_level + ("  " if input_lines else "ps> ")
+                line = input(prompt)
+                
                 if line.lower() == 'q':
                     print("\nGoodbye!")
                     return
                 if line == 's':
                     break
+                
+                # Add automatic indentation if user didn't type it
+                stripped = line.lstrip()
+                user_indent = len(line) - len(stripped)
+                
+                # If user typed content without indentation but we're at an indented level,
+                # automatically add indentation
+                if user_indent == 0 and indent_level > 0 and stripped:
+                    line = ("    " * indent_level) + stripped
+                
                 input_lines.append(line)
+                
+                # Update indentation level based on control structure keywords
+                if stripped and not stripped.startswith("show"):
+                    stripped_lower = stripped.lower()
+                    # Increase indent after control structure headers
+                    if any(stripped_lower.startswith(kw) for kw in ["if ", "while ", "step ", "for "]):
+                        if "then" in stripped_lower or ":" in stripped:
+                            indent_level += 1
+                    # Decrease indent after else/elseif
+                    elif stripped_lower.startswith("else"):
+                        pass  # else stays at same level as if
+                    # Check if line is back at lower indentation - means block ended
+                    elif user_indent < (indent_level - 1) * 4 and stripped:
+                        indent_level = user_indent // 4
 
             # Join lines and process
             user_input = "\n".join(input_lines).strip()

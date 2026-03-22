@@ -113,6 +113,7 @@ GROUP_TO_TOKEN_TYPE = {
 class Lexer:
     """
     Breaks a raw source string into a list of Tokens using regex.
+    Tracks indentation levels and generates INDENT/DEDENT tokens.
     Prints every token it finds (Explainability Layer).
     """
 
@@ -122,6 +123,7 @@ class Lexer:
         self.unknown_count = 0
         self.invalid_tokens = []
         self.had_errors = False
+        self.indent_stack = [0]  # Stack of indentation levels, starts at 0
 
     def tokenize(self):
         print()
@@ -132,29 +134,60 @@ class Lexer:
         print("  [LEXER] Reading the input...")
         print("  [LEXER] Generating tokens...")
 
-        for match in TOKEN_REGEX.finditer(self.source):
-            group_name = match.lastgroup
-            lexeme = match.group(group_name)
-
-            # Skip whitespace
-            if group_name == "WHITESPACE":
+        lines = self.source.split("\n")
+        
+        for line in lines:
+            # Calculate indentation (4 spaces = 1 level)
+            stripped = line.lstrip()
+            if not stripped or stripped.startswith("#"):  # Skip empty lines and comments
                 continue
+            
+            indent_level = (len(line) - len(stripped)) // 4
+            current_indent = self.indent_stack[-1]
+            
+            # Generate DEDENT tokens if indentation decreased
+            while indent_level < current_indent:
+                self.indent_stack.pop()
+                current_indent = self.indent_stack[-1]
+                self.tokens.append(Token(TokenType.DEDENT, ""))
+                print(f"  [LEXER] DEDENT (indent level now {current_indent})")
+            
+            # Generate INDENT token if indentation increased
+            if indent_level > current_indent:
+                self.indent_stack.append(indent_level)
+                self.tokens.append(Token(TokenType.INDENT, ""))
+                print(f"  [LEXER] INDENT (indent level now {indent_level})")
+            
+            # Tokenize the content of the line
+            for match in TOKEN_REGEX.finditer(stripped):
+                group_name = match.lastgroup
+                lexeme = match.group(group_name)
 
-            # Resolve to TokenType
-            token_type = GROUP_TO_TOKEN_TYPE.get(group_name, TokenType.UNKNOWN)
+                # Skip whitespace
+                if group_name == "WHITESPACE":
+                    continue
 
-            tok = Token(token_type, lexeme)
-            self.tokens.append(tok)
+                # Resolve to TokenType
+                token_type = GROUP_TO_TOKEN_TYPE.get(group_name, TokenType.UNKNOWN)
 
-            # ── Explainability output ───────────────────────────────
-            if token_type == TokenType.UNKNOWN:
-                self.unknown_count += 1
-                hint = self._hint_for_unknown(lexeme)
-                self.invalid_tokens.append((lexeme, hint))
-                print(f"  [LEXER] Found '{lexeme}'  -> UNKNOWN TOKEN !!")
-                print(f"           ↳ Hint: {hint}")
-            else:
-                print(f"  [LEXER] Found {f'{chr(39)}{lexeme}{chr(39)}':<16} -> Identified as {token_type}")
+                tok = Token(token_type, lexeme)
+                self.tokens.append(tok)
+
+                # ── Explainability output ───────────────────────────────
+                if token_type == TokenType.UNKNOWN:
+                    self.unknown_count += 1
+                    hint = self._hint_for_unknown(lexeme)
+                    self.invalid_tokens.append((lexeme, hint))
+                    print(f"  [LEXER] Found '{lexeme}'  -> UNKNOWN TOKEN !!")
+                    print(f"           ↳ Hint: {hint}")
+                else:
+                    print(f"  [LEXER] Found {f'{chr(39)}{lexeme}{chr(39)}':<16} -> Identified as {token_type}")
+
+        # Generate remaining DEDENT tokens at EOF
+        while len(self.indent_stack) > 1:
+            self.indent_stack.pop()
+            self.tokens.append(Token(TokenType.DEDENT, ""))
+            print(f"  [LEXER] DEDENT (indent level now {self.indent_stack[-1]})")
 
         # ── summary ─────────────────────────────────────────────────
         if self.unknown_count == 0:

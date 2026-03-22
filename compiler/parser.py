@@ -420,7 +420,7 @@ class Parser:
     def _parse_if(self):
         self._advance()
         print("  [PARSER] Checking statement structure...")
-        print("  [PARSER] Expected rule: [IF] [CONDITION] [THEN] <colon | newline>")
+        print("  [PARSER] Expected rule: [IF] [CONDITION] [THEN] ([INDENT] [block] [DEDENT] | [statement])")
         node = ParseTreeNode("If Statement")
         self._active_node = node
         node.add_child(ParseTreeNode("Keyword: if"))
@@ -441,7 +441,13 @@ class Parser:
             "condition": cond,
         }
 
-        if self._current() is not None and self._peek_type() != TokenType.DELIMITER:
+        # Handle indented block or inline body
+        if self._peek_type() == TokenType.INDENT:
+            block_stmts, block_nodes = self._parse_indented_block()
+            for block_node in block_nodes:
+                node.add_child(block_node)
+            stmt["block"] = block_stmts
+        elif self._current() is not None and self._peek_type() != TokenType.DELIMITER:
             inner = self._parse_inline_body()
             stmt["body"] = inner
             if inner:
@@ -457,7 +463,7 @@ class Parser:
     def _parse_elseif(self):
         self._advance()
         print("  [PARSER] Checking statement structure...")
-        print("  [PARSER] Expected rule: [ELSEIF] [CONDITION] [THEN] <colon | newline>")
+        print("  [PARSER] Expected rule: [ELSEIF] [CONDITION] [THEN] ([INDENT] [block] [DEDENT] | [statement])")
         node = ParseTreeNode("ElseIf Clause")
         self._active_node = node
         node.add_child(ParseTreeNode("Keyword: elseif"))
@@ -474,6 +480,14 @@ class Parser:
             node.add_child(ParseTreeNode("Colon: :"))
 
         stmt = {"type": "elseif", "condition": cond}
+
+        # Handle indented block
+        if self._peek_type() == TokenType.INDENT:
+            block_stmts, block_nodes = self._parse_indented_block()
+            for block_node in block_nodes:
+                node.add_child(block_node)
+            stmt["block"] = block_stmts
+
         if not self.errors:
             print("  [PARSER] Actual structure matches expected rule perfectly.")
 
@@ -484,7 +498,7 @@ class Parser:
     def _parse_else(self):
         self._advance()
         print("  [PARSER] Checking statement structure...")
-        print("  [PARSER] Expected rule: [ELSE] <colon | newline>")
+        print("  [PARSER] Expected rule: [ELSE] ([INDENT] [block] [DEDENT] | [statement])")
         node = ParseTreeNode("Else Clause")
         self._active_node = node
         node.add_child(ParseTreeNode("Keyword: else"))
@@ -494,17 +508,75 @@ class Parser:
             node.add_child(ParseTreeNode("Colon: :"))
 
         stmt = {"type": "else"}
+
+        # Handle indented block
+        if self._peek_type() == TokenType.INDENT:
+            block_stmts, block_nodes = self._parse_indented_block()
+            for block_node in block_nodes:
+                node.add_child(block_node)
+            stmt["block"] = block_stmts
+
         if not self.errors:
             print("  [PARSER] Actual structure matches expected rule perfectly.")
 
         self._active_node = None
         return stmt, node
 
+    # ── Helper: Parse Indented Block ────────────────────────────────
+    def _parse_indented_block(self):
+        """
+        Parse statements in an indented block.
+        Consumes INDENT token at the start and DEDENT token at the end.
+        Returns a list of parsed statements.
+        """
+        block_stmts = []
+        block_nodes = []
+        
+        # Expect and consume INDENT token
+        if self._peek_type() != TokenType.INDENT:
+            return block_stmts, block_nodes
+        
+        self._advance()  # consume INDENT
+        
+        # Parse statements until DEDENT
+        while self._peek_type() != TokenType.DEDENT and self.pos < len(self.tokens):
+            first = self._peek_type()
+            dispatcher = {
+                TokenType.DATATYPE: self._parse_declaration,
+                TokenType.SHOW: self._parse_show,
+                TokenType.INCREASE: self._parse_inc_dec,
+                TokenType.DECREASE: self._parse_inc_dec,
+                TokenType.IF: self._parse_if,
+                TokenType.ELSEIF: self._parse_elseif,
+                TokenType.ELSE: self._parse_else,
+                TokenType.WHILE: self._parse_while,
+                TokenType.STEP: self._parse_step,
+                TokenType.IDENTIFIER: self._parse_reassignment,
+            }
+            
+            handler = dispatcher.get(first)
+            if handler:
+                result = handler()
+                if result:
+                    stmt, node = result
+                    if stmt:
+                        block_stmts.append(stmt)
+                    if node:
+                        block_nodes.append(node)
+            else:
+                break
+        
+        # Consume DEDENT token
+        if self._peek_type() == TokenType.DEDENT:
+            self._advance()
+        
+        return block_stmts, block_nodes
+
     # ── Parse: while ────────────────────────────────────────────────
     def _parse_while(self):
         self._advance()
         print("  [PARSER] Checking statement structure...")
-        print("  [PARSER] Expected rule: [WHILE] [CONDITION] <colon | newline>")
+        print("  [PARSER] Expected rule: [WHILE] [CONDITION] [INDENT] [block] [DEDENT]")
         node = ParseTreeNode("While Loop")
         self._active_node = node
         node.add_child(ParseTreeNode("Keyword: while"))
@@ -516,7 +588,12 @@ class Parser:
             self._advance()
             node.add_child(ParseTreeNode("Colon: :"))
 
-        stmt = {"type": "while", "condition": cond}
+        # Parse indented block
+        block_stmts, block_nodes = self._parse_indented_block()
+        for block_node in block_nodes:
+            node.add_child(block_node)
+
+        stmt = {"type": "while", "condition": cond, "block": block_stmts}
         if not self.errors:
             print("  [PARSER] Actual structure matches expected rule perfectly.")
 
@@ -594,7 +671,7 @@ class Parser:
     # ── Parse: condition (for if / while) ───────────────────────────
     def _parse_condition(self):
         cond_tokens = []
-        stop_types = {TokenType.THEN, TokenType.COLON, TokenType.DELIMITER}
+        stop_types = {TokenType.THEN, TokenType.COLON, TokenType.DELIMITER, TokenType.INDENT}
         while self._current() is not None and self._peek_type() not in stop_types:
             cond_tokens.append(self._advance())
         return cond_tokens
@@ -603,7 +680,7 @@ class Parser:
     def _parse_expression(self):
         expr = []
         stop_types = {TokenType.DELIMITER, TokenType.COLON, TokenType.THEN,
-                      TokenType.BY, TokenType.FROM, TokenType.TO, TokenType.TIMES}
+                      TokenType.BY, TokenType.FROM, TokenType.TO, TokenType.TIMES, TokenType.INDENT}
         paren_depth = 0
 
         while self._current() is not None:
