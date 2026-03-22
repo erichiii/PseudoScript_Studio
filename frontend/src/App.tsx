@@ -41,7 +41,7 @@ function App() {
             <p className="text-xs uppercase tracking-[0.6em] text-white/50">PseudoScript Studio</p>
             <h1 className="font-display text-3xl text-white">Compiler Workspace</h1>
             <p className="text-sm text-white/60">
-              Editor on the left, compiler characters below, terminal-style output on the right — just like your favorite IDE.
+              Editor on the left with IDE-style controls and terminal-style output on the right — just like your favorite IDE.
             </p>
           </div>
           <div className="flex gap-3">
@@ -59,7 +59,7 @@ function App() {
             </button>
           </div>
         </header>
-        <CompilerWorkspace />
+        <CompilerWorkspace onOpenCheatsheet={() => setCurrentPage("cheatsheet")} />
       </div>
     </div>
   );

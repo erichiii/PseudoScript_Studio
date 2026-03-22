@@ -1,11 +1,15 @@
 import { useState } from "react";
 
 import { compilePseudoScript } from "../../lib/api";
-import { starterCode } from "./data";
-import LeftPanel from "./LeftPanel";
-import RightPanel from "./RightPanel";
+import { randomSnippets, starterCode } from "./data";
+import CodeEditor from "./CodeEditor";
+import OutputTabs from "./OutputTabs";
 
-const CompilerWorkspace = () => {
+type CompilerWorkspaceProps = {
+  onOpenCheatsheet: () => void;
+};
+
+const CompilerWorkspace = ({ onOpenCheatsheet }: CompilerWorkspaceProps) => {
   const [code, setCode] = useState(starterCode.trim());
   const [output, setOutput] = useState("Tap run to see compiler output.");
   const [isCompiling, setIsCompiling] = useState(false);
@@ -35,10 +39,31 @@ const CompilerWorkspace = () => {
     }
   };
 
+  const handleGenerateRandom = () => {
+    const snippet = randomSnippets[Math.floor(Math.random() * randomSnippets.length)] ?? starterCode;
+    setCode(snippet.trim());
+    setOutput("Random starter code loaded. Tap run to see it in action.");
+    setError(null);
+    setLastSuccess(null);
+  };
+
   return (
-    <div className="grid gap-8 lg:grid-cols-[420px,1fr]">
-      <LeftPanel code={code} onCodeChange={setCode} onCompile={handleCompile} isCompiling={isCompiling} />
-      <RightPanel output={output} isCompiling={isCompiling} error={error} success={lastSuccess} />
+    <div className="rounded-[36px] border border-white/10 bg-[#05070f] p-4 shadow-[0_25px_60px_rgba(3,0,12,0.55)] lg:p-6">
+      <div className="grid gap-4 lg:grid-cols-2 lg:gap-0 lg:divide-x lg:divide-white/5">
+        <div className="lg:pr-4">
+          <CodeEditor
+            value={code}
+            onChange={setCode}
+            onRun={handleCompile}
+            isRunning={isCompiling}
+            onGenerateRandom={handleGenerateRandom}
+            onOpenCheatsheet={onOpenCheatsheet}
+          />
+        </div>
+        <div className="lg:pl-4">
+          <OutputTabs output={output} isCompiling={isCompiling} error={error} success={lastSuccess} />
+        </div>
+      </div>
     </div>
   );
 };
