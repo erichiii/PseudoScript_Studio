@@ -1,104 +1,16 @@
-import { clsx } from "clsx";
-import {
-  sampleErrors,
-  sampleParseTree,
-  sampleSemanticNotes,
-  sampleSymbolTable,
-  sampleTokens,
-} from "./data";
-
-type TabId = "lexer" | "parser" | "semantic" | "symbol" | "errors";
+import clsx from "clsx";
 
 type OutputTabsProps = {
-  activeTab: TabId;
-  onTabChange: (tab: TabId) => void;
+  output: string;
+  isCompiling?: boolean;
+  error?: string | null;
+  success?: boolean | null;
 };
 
-const tabs: { id: TabId; label: string }[] = [
-  { id: "lexer", label: "Lexer" },
-  { id: "parser", label: "Parser" },
-  { id: "semantic", label: "Semantic" },
-  { id: "symbol", label: "Symbol Table" },
-  { id: "errors", label: "Errors" },
-];
-
-type ParseNode = (typeof sampleParseTree)[number];
-
-const formatParseTree = (nodes: ParseNode[], depth = 0): string[] =>
-  nodes.flatMap((node) => {
-    const indent = "  ".repeat(depth);
-    const lines = [`${indent}> ${node.label}`];
-    if (node.children) {
-      lines.push(...formatParseTree(node.children, depth + 1));
-    }
-    return lines;
-  });
-
-const buildLexerLines = () => {
-  const lines = [
-    "PS C:\\PseudoScript_Studio> pseudoscript compile main.ps",
-    "[LEXER] Starting lexical analysis...",
-  ];
-
-  sampleTokens.forEach((token, index) => {
-    lines.push(`[LEXER] Token ${index + 1}: ${token.type} -> ${token.value}`);
-  });
-
-  lines.push("[LEXER] ✓ Lexical analysis complete. 0 unknown tokens detected.");
-  return lines;
-};
-
-const buildParserLines = () => {
-  const lines = ["[PARSER] Validating syntax rules..."];
-  lines.push(...formatParseTree(sampleParseTree));
-  lines.push("[PARSER] ✓ Syntax analysis complete. No recovery steps applied.");
-  return lines;
-};
-
-const buildSemanticLines = () => {
-  const lines = ["[SEMANTIC] Launching semantic analyzer..."];
-  lines.push(...sampleSemanticNotes);
-  lines.push("[SEMANTIC] ✓ Semantic analysis complete.");
-  return lines;
-};
-
-const buildSymbolLines = () => {
-  const lines = ["[SYMBOL TABLE] Building scope map..."];
-  sampleSymbolTable.entries.forEach((symbol) => {
-    lines.push(
-      `[SYMBOL] ${symbol.name} :: type=${symbol.type} :: scope=${symbol.scope} :: bytes=${symbol.bytes} :: value=${symbol.value}`
-    );
-  });
-  lines.push("", "[MEMORY] Scope usage overview:");
-  sampleSymbolTable.scopes.forEach((scope) => {
-    lines.push(`[MEMORY] Level ${scope.level} (${scope.label}) → ${scope.memory} bytes`);
-  });
-  lines.push("[SYMBOL TABLE] ✓ Symbol table ready.");
-  return lines;
-};
-
-const buildErrorLines = () => {
-  const lines = ["[ERRORS] Aggregating issues across phases..."];
-  sampleErrors.forEach((error, index) => {
-    lines.push(`[${error.phase}] ERROR ${index + 1}: ${error.message}`);
-    lines.push(`  ↳ ${error.hint}`);
-  });
-  lines.push("[ERRORS] ✗ Compilation halted due to blocking issues.");
-  return lines;
-};
-
-const terminalBuilders: Record<TabId, () => string[]> = {
-  lexer: buildLexerLines,
-  parser: buildParserLines,
-  semantic: buildSemanticLines,
-  symbol: buildSymbolLines,
-  errors: buildErrorLines,
-};
-
-const getTerminalOutput = (tab: TabId) => terminalBuilders[tab]().join("\n");
-
-const OutputTabs = ({ activeTab, onTabChange }: OutputTabsProps) => {
-  const terminalOutput = getTerminalOutput(activeTab);
+const OutputTabs = ({ output, isCompiling, error, success }: OutputTabsProps) => {
+  const hasOutput = Boolean(output?.trim());
+  const statusLabel = success === null ? "idle" : success ? "success" : "failed";
+  const statusColor = success === null ? "bg-white/30" : success ? "bg-emerald-400" : "bg-rose-400";
 
   return (
     <div className="rounded-3xl border border-white/10 bg-[#090c16] text-white shadow-glass">
@@ -109,27 +21,30 @@ const OutputTabs = ({ activeTab, onTabChange }: OutputTabsProps) => {
           <span className="h-2.5 w-2.5 rounded-full bg-[#27c93f]" />
         </span>
         Terminal Output
-      </div>
-
-      <div className="flex flex-wrap gap-2 px-6 py-4">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={clsx(
-              "rounded-full px-4 py-2 text-xs font-semibold transition",
-              activeTab === tab.id
-                ? "bg-white/10 text-white shadow"
-                : "bg-white/5 text-white/50 hover:text-white"
-            )}
-            onClick={() => onTabChange(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
+        <span className="ml-auto flex items-center gap-2 text-[0.55rem] tracking-[0.2em]">
+          <span className={clsx("h-2 w-2 rounded-full", statusColor)} />
+          {statusLabel}
+        </span>
       </div>
 
       <div className="border-t border-white/5 bg-[#05070f] px-6 py-5 font-mono text-xs leading-relaxed text-[#cdd5f5]">
-        <pre className="whitespace-pre-wrap">{terminalOutput}</pre>
+        {isCompiling && (
+          <p className="animate-pulse text-white/60">Running lexer → parser → semantic analyzer...</p>
+        )}
+
+        {!isCompiling && error && (
+          <p className="whitespace-pre-wrap text-rose-200">{error}</p>
+        )}
+
+        {!isCompiling && !error && hasOutput && (
+          <pre className="whitespace-pre-wrap">{output}</pre>
+        )}
+
+        {!isCompiling && !error && !hasOutput && (
+          <p className="text-white/40">
+            Terminal standing by. Write some code on the left and hit Run Compiler to see the explainability logs.
+          </p>
+        )}
       </div>
     </div>
   );

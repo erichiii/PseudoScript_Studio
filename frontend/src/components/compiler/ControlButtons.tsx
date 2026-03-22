@@ -1,10 +1,19 @@
 type ControlButtonsProps = {
+  onCompile: () => void;
+  isCompiling?: boolean;
   onGenerate?: () => void;
   onCheatsheet?: () => void;
 };
 
-const ControlButtons = ({ onGenerate, onCheatsheet }: ControlButtonsProps) => (
+const ControlButtons = ({ onCompile, isCompiling, onGenerate, onCheatsheet }: ControlButtonsProps) => (
   <div className="flex flex-wrap gap-3">
+    <button
+      className="rounded-xl bg-[#007acc] px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+      onClick={onCompile}
+      disabled={isCompiling}
+    >
+      {isCompiling ? "Compiling..." : "Run Compiler"}
+    </button>
     <button
       className="rounded-xl bg-midnight px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5"
       onClick={onGenerate}
