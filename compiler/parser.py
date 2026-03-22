@@ -7,7 +7,63 @@ Validates whether the token sequence forms a legal PseudoScript
 statement.  Prints every rule it checks (Explainability Layer).
 """
 
-from tokens import TokenType
+try:
+    from .tokens import TokenType
+except ImportError:  # pragma: no cover
+    from tokens import TokenType
+
+
+class ParseTreeNode:
+    """Node used to visualize and annotate the parse tree."""
+
+    def __init__(self, label):
+        self.label = label
+        self.children = []
+        self.error = False
+        self.hint = None
+        self.annotations = []
+
+    def add_child(self, node):
+        if node is not None:
+            self.children.append(node)
+
+    def mark_error(self, message, hint=None):
+        self.error = True
+        self.hint = hint or message
+        self.annotations.append(f"ERROR: {message}")
+
+    def add_annotation(self, text):
+        self.annotations.append(text)
+
+    def render(self, prefix="", is_last=True, show_annotations=False):
+        """Render parse tree as a visual tree structure."""
+        # Tree branch characters
+        connector = "└─ " if is_last else "├─ "
+        status = "✗ " if self.error else "• "
+        
+        # Print the node label
+        line = f"{prefix}{connector}{status}{self.label}"
+        print(line)
+        
+        # Adjust prefix for child nodes
+        extension = "    " if is_last else "│   "
+        child_prefix = prefix + extension
+        
+        # Print error hint if present
+        if self.error and self.hint:
+            hint_connector = "└─ " if is_last else "├─ "
+            print(f"{prefix}{hint_connector}⚠ Hint: {self.hint}")
+        
+        # Print annotations (semantic info)
+        if show_annotations and self.annotations:
+            for idx, note in enumerate(self.annotations):
+                is_last_annot = (idx == len(self.annotations) - 1) and not self.children
+                annot_connector = "└─ " if is_last_annot else "├─ "
+                print(f"{child_prefix}{annot_connector}📝 {note}")
+        
+        # Recursively render children
+        for idx, child in enumerate(self.children):
+            child.render(child_prefix, idx == len(self.children) - 1, show_annotations)
 
 
 class Parser:
@@ -33,6 +89,8 @@ class Parser:
         self.errors = []
         self.warnings = []
         self.ast = []
+        self.tree_nodes = []
+        self._active_node = None
 
     # ── helpers ──────────────────────────────────────────────────────
     def _current(self):
@@ -66,6 +124,11 @@ class Parser:
             actual_desc = f"'{actual.value}' ({actual.type})" if actual else "END OF INPUT"
             self.errors.append(f"Expected {lbl} but found {actual_desc}")
             print(f"  [PARSER] X Expected [{lbl}] but found {actual_desc}")
+            if self._active_node is not None:
+                error_node = ParseTreeNode(f"Missing {lbl}")
+                hint = f"Expected {lbl} before {actual_desc}." if actual else f"Expected {lbl} but reached end of input."
+                error_node.mark_error(hint, hint)
+                self._active_node.add_child(error_node)
             return None
 
     # ── main entry ──────────────────────────────────────────────────
@@ -74,42 +137,55 @@ class Parser:
         print("─" * 60)
         print("  STARTING SYNTAX ANALYSIS")
         print("─" * 60)
+        print("  [PARSER] Hi! I'm the Syntax Analyzer. I make sure your tokens follow the grammar, and I'll build a parse tree so you can see what I understood.")
 
         # ── Panic Mode Recovery: skip leading UNKNOWN tokens ────────
         self._panic_mode_skip()
 
         if not self.tokens:
             print("  [PARSER] No tokens to parse.")
-            return self.ast
+            self.render_parse_tree()
+            return self.ast, self.tree_nodes
 
-        # ── determine statement type ────────────────────────────────
-        first = self._peek_type()
+        # ── Parse multiple statements ───────────────────────────────
+        while self.pos < len(self.tokens):
+            # determine statement type
+            first = self._peek_type()
+            dispatcher = {
+                TokenType.DATATYPE: self._parse_declaration,
+                TokenType.SHOW: self._parse_show,
+                TokenType.INCREASE: self._parse_inc_dec,
+                TokenType.DECREASE: self._parse_inc_dec,
+                TokenType.IF: self._parse_if,
+                TokenType.ELSEIF: self._parse_elseif,
+                TokenType.ELSE: self._parse_else,
+                TokenType.WHILE: self._parse_while,
+                TokenType.STEP: self._parse_step,
+                TokenType.IDENTIFIER: self._parse_reassignment,
+            }
 
-        if first == TokenType.DATATYPE:
-            self._parse_declaration()
-        elif first == TokenType.SHOW:
-            self._parse_show()
-        elif first in (TokenType.INCREASE, TokenType.DECREASE):
-            self._parse_inc_dec()
-        elif first == TokenType.IF:
-            self._parse_if()
-        elif first == TokenType.ELSEIF:
-            self._parse_elseif()
-        elif first == TokenType.ELSE:
-            self._parse_else()
-        elif first == TokenType.WHILE:
-            self._parse_while()
-        elif first == TokenType.STEP:
-            self._parse_step()
-        elif first == TokenType.IDENTIFIER:
-            self._parse_reassignment()
-        else:
-            self.errors.append(f"Unexpected token '{self.tokens[self.pos].value}' at start of statement")
-            print(f"  [PARSER] X Unexpected token '{self.tokens[self.pos].value}' at start of statement.")
+            handler = dispatcher.get(first)
+            result = handler() if handler else None
+
+            if result:
+                stmt, node = result
+                if node:
+                    self.tree_nodes.append(node)
+                if stmt:
+                    self.ast.append(stmt)
+            elif self.pos < len(self.tokens):
+                # Only raise an error if we still have tokens (not EOF)
+                tok = self.tokens[self.pos]
+                self.errors.append(f"Unexpected token '{tok.value}' at start of statement")
+                error_node = ParseTreeNode("Unexpected token")
+                error_node.mark_error(f"'{tok.value}' cannot start a statement.", "Start with a datatype, identifier, or keyword like 'show'.")
+                self.tree_nodes.append(error_node)
+                print(f"  [PARSER] X Unexpected token '{tok.value}' at start of statement.")
+                self.pos += 1  # Skip to avoid infinite loop
 
         # ── summary ─────────────────────────────────────────────────
         if not self.errors:
-            print(f"\n  Syntax Analysis Complete. No structural errors.")
+            print("\n  Syntax Analysis Complete. No structural errors.")
         else:
             for w in self.warnings:
                 print(f"  !! {w}")
@@ -117,7 +193,16 @@ class Parser:
             for e in self.errors:
                 print(f"    - {e}")
 
-        return self.ast
+        self.render_parse_tree(show_annotations=False)
+        return self.ast, self.tree_nodes
+
+    def render_parse_tree(self, show_annotations=False):
+        if not self.tree_nodes:
+            print("\n  [PARSER] Parse tree is empty.")
+            return
+        print("\n  Parse Tree (" + ("annotated" if show_annotations else "structural") + "):")
+        for idx, node in enumerate(self.tree_nodes):
+            node.render("", idx == len(self.tree_nodes) - 1, show_annotations)
 
     # ── Panic Mode Recovery ─────────────────────────────────────────
     def _panic_mode_skip(self):
@@ -138,97 +223,151 @@ class Parser:
         self.pos = 0
 
     # ── phrase-level recovery: missing delimiter ────────────────────
-    def _ensure_delimiter(self):
+    def _ensure_delimiter(self, node):
         if self._peek_type() == TokenType.DELIMITER:
-            self._advance()
+            tok = self._advance()
+            if node:
+                node.add_child(ParseTreeNode(f"Delimiter: {tok.value}"))
             print(f"  [PARSER] Found [{TokenType.DELIMITER}] -> Statement properly terminated with '.'")
         else:
             self.warnings.append("Phrase-Level Recovery: inserted missing '.' delimiter")
+            recovery_node = ParseTreeNode("Missing delimiter")
+            recovery_node.mark_error("Missing '.' at the end of the statement.", "Add a period to terminate the statement.")
+            if node:
+                node.add_child(recovery_node)
             print(f"  [PARSER] !! Phrase-Level Recovery: Missing '.' at end of statement -- auto-inserted.")
+
+    @staticmethod
+    def _expression_node(label, expr_tokens):
+        node = ParseTreeNode(label)
+        if not expr_tokens:
+            node.mark_error("Expression is missing.", "Provide a literal, identifier, or expression.")
+            return node
+        for tok in expr_tokens:
+            node.add_child(ParseTreeNode(f"{tok.type}: {tok.value}"))
+        return node
 
     # ── Parse: variable declaration ─────────────────────────────────
     def _parse_declaration(self):
         print("  [PARSER] Checking statement structure...")
         print("  [PARSER] Expected rule: [DATATYPE] [IDENTIFIER] [ASSIGN_OP] [EXPRESSION] [DELIMITER]")
 
+        node = ParseTreeNode("Declaration")
+        self._active_node = node
+        success = True
+
         datatype_tok = self._expect(TokenType.DATATYPE, "DATATYPE")
-        if not datatype_tok:
-            return
+        if datatype_tok:
+            node.add_child(ParseTreeNode(f"Datatype: {datatype_tok.value}"))
+        else:
+            success = False
 
         ident_tok = self._expect(TokenType.IDENTIFIER, "IDENTIFIER")
-        if not ident_tok:
-            return
+        if ident_tok:
+            node.add_child(ParseTreeNode(f"Identifier: {ident_tok.value}"))
+        else:
+            success = False
 
         assign_tok = self._expect(TokenType.ASSIGN_OP, "ASSIGN_OP 'is'")
-        if not assign_tok:
-            return
+        if assign_tok:
+            node.add_child(ParseTreeNode("Assignment Operator: is"))
+        else:
+            success = False
 
         expr_tokens = self._parse_expression()
-        if not expr_tokens:
+        if expr_tokens:
+            node.add_child(self._expression_node("Expression", expr_tokens))
+        else:
+            success = False
             self.errors.append("Expected a value or expression after 'is'")
             print("  [PARSER] X Expected a value or expression after 'is'")
-            return
 
-        self._ensure_delimiter()
+        self._ensure_delimiter(node)
 
-        stmt = {
-            "type": "declaration",
-            "datatype": datatype_tok.value,
-            "identifier": ident_tok.value,
-            "expression": expr_tokens,
-        }
-        self.ast.append(stmt)
-        if not self.errors:
-            print("  [PARSER] Actual structure matches expected rule perfectly.")
+        stmt = None
+        if success:
+            stmt = {
+                "type": "declaration",
+                "datatype": datatype_tok.value,
+                "identifier": ident_tok.value,
+                "expression": expr_tokens,
+            }
+            if not self.errors:
+                print("  [PARSER] Actual structure matches expected rule perfectly.")
+
+        self._active_node = None
+        return stmt, node
 
     # ── Parse: reassignment (identifier is expr.) ───────────────────
     def _parse_reassignment(self):
         print("  [PARSER] Checking statement structure...")
         print("  [PARSER] Expected rule: [IDENTIFIER] [ASSIGN_OP] [EXPRESSION] [DELIMITER]")
+        node = ParseTreeNode("Reassignment")
+        self._active_node = node
+        success = True
 
         ident_tok = self._advance()
+        node.add_child(ParseTreeNode(f"Identifier: {ident_tok.value}"))
 
         assign_tok = self._expect(TokenType.ASSIGN_OP, "ASSIGN_OP 'is'")
-        if not assign_tok:
-            return
+        if assign_tok:
+            node.add_child(ParseTreeNode("Assignment Operator: is"))
+        else:
+            success = False
 
         expr_tokens = self._parse_expression()
-        if not expr_tokens:
+        if expr_tokens:
+            node.add_child(self._expression_node("Expression", expr_tokens))
+        else:
+            success = False
             self.errors.append("Expected a value or expression after 'is'")
-            return
 
-        self._ensure_delimiter()
+        self._ensure_delimiter(node)
 
-        stmt = {
-            "type": "reassignment",
-            "identifier": ident_tok.value,
-            "expression": expr_tokens,
-        }
-        self.ast.append(stmt)
-        if not self.errors:
-            print("  [PARSER] Actual structure matches expected rule perfectly.")
+        stmt = None
+        if success:
+            stmt = {
+                "type": "reassignment",
+                "identifier": ident_tok.value,
+                "expression": expr_tokens,
+            }
+            if not self.errors:
+                print("  [PARSER] Actual structure matches expected rule perfectly.")
+
+        self._active_node = None
+        return stmt, node
 
     # ── Parse: show statement ───────────────────────────────────────
     def _parse_show(self):
         print("  [PARSER] Checking statement structure...")
         print("  [PARSER] Expected rule: [SHOW] [EXPRESSION] [DELIMITER]")
+        node = ParseTreeNode("Show")
+        self._active_node = node
+        success = True
 
-        self._advance()
+        keyword = self._advance()
+        node.add_child(ParseTreeNode(f"Keyword: {keyword.value}"))
 
         expr_tokens = self._parse_expression()
-        if not expr_tokens:
+        if expr_tokens:
+            node.add_child(self._expression_node("Expression", expr_tokens))
+        else:
+            success = False
             self.errors.append("Expected a value or expression after 'show'")
-            return
 
-        self._ensure_delimiter()
+        self._ensure_delimiter(node)
 
-        stmt = {
-            "type": "show",
-            "expression": expr_tokens,
-        }
-        self.ast.append(stmt)
-        if not self.errors:
-            print("  [PARSER] Actual structure matches expected rule perfectly.")
+        stmt = None
+        if success:
+            stmt = {
+                "type": "show",
+                "expression": expr_tokens,
+            }
+            if not self.errors:
+                print("  [PARSER] Actual structure matches expected rule perfectly.")
+
+        self._active_node = None
+        return stmt, node
 
     # ── Parse: increase / decrease ──────────────────────────────────
     def _parse_inc_dec(self):
@@ -237,43 +376,65 @@ class Parser:
 
         print("  [PARSER] Checking statement structure...")
         print(f"  [PARSER] Expected rule: [{action.type}] [IDENTIFIER] [BY] [EXPRESSION] [DELIMITER]")
+        node = ParseTreeNode(action_name.title())
+        self._active_node = node
+        node.add_child(ParseTreeNode(f"Keyword: {action_name}"))
+        success = True
 
         ident_tok = self._expect(TokenType.IDENTIFIER, "IDENTIFIER")
-        if not ident_tok:
-            return
+        if ident_tok:
+            node.add_child(ParseTreeNode(f"Identifier: {ident_tok.value}"))
+        else:
+            success = False
 
         by_tok = self._expect(TokenType.BY, "BY")
-        if not by_tok:
-            return
+        if by_tok:
+            node.add_child(ParseTreeNode("Keyword: by"))
+        else:
+            success = False
 
         expr_tokens = self._parse_expression()
-        if not expr_tokens:
+        if expr_tokens:
+            node.add_child(self._expression_node("Expression", expr_tokens))
+        else:
+            success = False
             self.errors.append(f"Expected expression after 'by' in {action_name}")
-            return
 
-        self._ensure_delimiter()
+        self._ensure_delimiter(node)
 
-        stmt = {
-            "type": "inc_dec",
-            "action": action_name,
-            "identifier": ident_tok.value,
-            "expression": expr_tokens,
-        }
-        self.ast.append(stmt)
-        if not self.errors:
-            print("  [PARSER] Actual structure matches expected rule perfectly.")
+        stmt = None
+        if success:
+            stmt = {
+                "type": "inc_dec",
+                "action": action_name,
+                "identifier": ident_tok.value,
+                "expression": expr_tokens,
+            }
+            if not self.errors:
+                print("  [PARSER] Actual structure matches expected rule perfectly.")
+
+        self._active_node = None
+        return stmt, node
 
     # ── Parse: if ───────────────────────────────────────────────────
     def _parse_if(self):
         self._advance()
         print("  [PARSER] Checking statement structure...")
         print("  [PARSER] Expected rule: [IF] [CONDITION] [THEN] <colon | newline>")
+        node = ParseTreeNode("If Statement")
+        self._active_node = node
+        node.add_child(ParseTreeNode("Keyword: if"))
 
         cond = self._parse_condition()
+        node.add_child(self._expression_node("Condition", cond))
 
-        self._expect(TokenType.THEN, "THEN")
+        then_tok = self._expect(TokenType.THEN, "THEN")
+        if then_tok:
+            node.add_child(ParseTreeNode("Keyword: then"))
+
         if self._peek_type() == TokenType.COLON:
             self._advance()
+            node.add_child(ParseTreeNode("Colon: :"))
 
         stmt = {
             "type": "if",
@@ -283,102 +444,152 @@ class Parser:
         if self._current() is not None and self._peek_type() != TokenType.DELIMITER:
             inner = self._parse_inline_body()
             stmt["body"] = inner
+            if inner:
+                node.add_child(self._expression_node("Inline Body", inner))
 
-        self.ast.append(stmt)
         if not self.errors:
             print("  [PARSER] Actual structure matches expected rule perfectly.")
+
+        self._active_node = None
+        return stmt, node
 
     # ── Parse: elseif ───────────────────────────────────────────────
     def _parse_elseif(self):
         self._advance()
         print("  [PARSER] Checking statement structure...")
         print("  [PARSER] Expected rule: [ELSEIF] [CONDITION] [THEN] <colon | newline>")
+        node = ParseTreeNode("ElseIf Clause")
+        self._active_node = node
+        node.add_child(ParseTreeNode("Keyword: elseif"))
 
         cond = self._parse_condition()
-        self._expect(TokenType.THEN, "THEN")
+        node.add_child(self._expression_node("Condition", cond))
+
+        then_tok = self._expect(TokenType.THEN, "THEN")
+        if then_tok:
+            node.add_child(ParseTreeNode("Keyword: then"))
+
         if self._peek_type() == TokenType.COLON:
             self._advance()
+            node.add_child(ParseTreeNode("Colon: :"))
 
         stmt = {"type": "elseif", "condition": cond}
-        self.ast.append(stmt)
         if not self.errors:
             print("  [PARSER] Actual structure matches expected rule perfectly.")
+
+        self._active_node = None
+        return stmt, node
 
     # ── Parse: else ─────────────────────────────────────────────────
     def _parse_else(self):
         self._advance()
         print("  [PARSER] Checking statement structure...")
         print("  [PARSER] Expected rule: [ELSE] <colon | newline>")
+        node = ParseTreeNode("Else Clause")
+        self._active_node = node
+        node.add_child(ParseTreeNode("Keyword: else"))
 
         if self._peek_type() == TokenType.COLON:
             self._advance()
+            node.add_child(ParseTreeNode("Colon: :"))
 
         stmt = {"type": "else"}
-        self.ast.append(stmt)
         if not self.errors:
             print("  [PARSER] Actual structure matches expected rule perfectly.")
+
+        self._active_node = None
+        return stmt, node
 
     # ── Parse: while ────────────────────────────────────────────────
     def _parse_while(self):
         self._advance()
         print("  [PARSER] Checking statement structure...")
         print("  [PARSER] Expected rule: [WHILE] [CONDITION] <colon | newline>")
+        node = ParseTreeNode("While Loop")
+        self._active_node = node
+        node.add_child(ParseTreeNode("Keyword: while"))
 
         cond = self._parse_condition()
+        node.add_child(self._expression_node("Condition", cond))
 
         if self._peek_type() == TokenType.COLON:
             self._advance()
+            node.add_child(ParseTreeNode("Colon: :"))
 
         stmt = {"type": "while", "condition": cond}
-        self.ast.append(stmt)
         if not self.errors:
             print("  [PARSER] Actual structure matches expected rule perfectly.")
+
+        self._active_node = None
+        return stmt, node
 
     # ── Parse: step loop ────────────────────────────────────────────
     def _parse_step(self):
         self._advance()
         print("  [PARSER] Checking statement structure...")
 
+        node = ParseTreeNode("Step Loop")
+        self._active_node = node
+        node.add_child(ParseTreeNode("Keyword: step"))
+
         stmt = {"type": "step"}
+        success = True
 
         if self._peek_type() == TokenType.DATATYPE:
-            stmt["iter_type"] = self._advance().value
+            dtype = self._advance().value
+            stmt["iter_type"] = dtype
+            node.add_child(ParseTreeNode(f"Iterator Type: {dtype}"))
             ident = self._expect(TokenType.IDENTIFIER, "IDENTIFIER (loop variable)")
             if ident:
                 stmt["iter_var"] = ident.value
+                node.add_child(ParseTreeNode(f"Iterator Name: {ident.value}"))
+            else:
+                success = False
 
         if self._peek_type() == TokenType.BY:
             self._advance()
             step_expr = self._parse_expression()
             stmt["step_by"] = step_expr
+            node.add_child(self._expression_node("Step Size", step_expr))
 
         if self._peek_type() == TokenType.NUMERIC_LITERAL and self._peek_type(1) == TokenType.TIMES:
             count = self._advance().value
             self._advance()
             stmt["variant"] = "times"
             stmt["count"] = count
+            node.add_child(ParseTreeNode(f"Repeat Count: {count}"))
             print("  [PARSER] Expected rule: [STEP] [COUNT] [TIMES] <colon | DELIMITER>")
         elif self._peek_type() == TokenType.FROM:
             self._advance()
             from_expr = self._parse_expression()
             stmt["from"] = from_expr
-            self._expect(TokenType.TO, "TO")
+            node.add_child(self._expression_node("From", from_expr))
+            to_tok = self._expect(TokenType.TO, "TO")
+            if to_tok:
+                node.add_child(ParseTreeNode("Keyword: to"))
+            else:
+                success = False
             to_expr = self._parse_expression()
             stmt["to"] = to_expr
+            node.add_child(self._expression_node("To", to_expr))
             stmt["variant"] = "from_to"
             print("  [PARSER] Expected rule: [STEP] ... [FROM] [EXPR] [TO] [EXPR] <colon | newline>")
         else:
             self.errors.append("Invalid step loop syntax")
+            node.mark_error("Step loop syntax is incomplete.", "Use 'step <count> times' or 'step from <a> to <b>'.")
             print("  [PARSER] X Invalid step loop syntax")
-            self.ast.append(stmt)
-            return
+            self._active_node = None
+            return stmt, node
 
         if self._peek_type() == TokenType.COLON:
             self._advance()
+            node.add_child(ParseTreeNode("Colon: :"))
 
-        self.ast.append(stmt)
-        if not self.errors:
+        if success and not self.errors:
             print("  [PARSER] Actual structure matches expected rule perfectly.")
+
+        self._active_node = None
+        return stmt, node
 
     # ── Parse: condition (for if / while) ───────────────────────────
     def _parse_condition(self):
@@ -416,3 +627,11 @@ class Parser:
         while self._current() is not None:
             body_tokens.append(self._advance())
         return body_tokens
+
+    @staticmethod
+    def announce_blocked(reason):
+        print()
+        print("─" * 60)
+        print("  STARTING SYNTAX ANALYSIS")
+        print("─" * 60)
+        print("  [PARSER] Because " + reason + ", we failed to parse anything. It is important that your input follow the rules.")

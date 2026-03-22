@@ -7,7 +7,12 @@ Validates types and binds variables into a Symbol Table.
 Prints every check it performs (Explainability Layer).
 """
 
-from tokens import TokenType
+try:
+    from .tokens import TokenType
+    from .symbol_table import SymbolTable
+except ImportError:  # pragma: no cover
+    from tokens import TokenType
+    from symbol_table import SymbolTable
 
 
 class SemanticAnalyzer:
@@ -17,8 +22,10 @@ class SemanticAnalyzer:
     """
 
     def __init__(self, symbol_table=None):
-        self.symbol_table = symbol_table if symbol_table is not None else {}
+        self.symbol_table = symbol_table if symbol_table is not None else SymbolTable()
         self.errors = []
+        self.parse_tree = []
+        self._active_node = None
 
     # ── type compatibility map ──────────────────────────────────────
     TYPE_MAP = {
@@ -36,13 +43,19 @@ class SemanticAnalyzer:
     }
 
     # ── main entry ──────────────────────────────────────────────────
-    def analyze(self, ast):
+    def analyze(self, ast, parse_tree=None):
         print()
         print("─" * 60)
         print("  STARTING SEMANTIC ANALYSIS")
         print("─" * 60)
 
-        for stmt in ast:
+        print("  [SEMANTICS] Hello! I'm the Semantic Analyzer (you can call me Sage). I'll check meanings, types, and memory bindings.")
+
+        self.parse_tree = parse_tree or []
+
+        for idx, stmt in enumerate(ast):
+            node = self.parse_tree[idx] if idx < len(self.parse_tree) else None
+            self._active_node = node
             stype = stmt.get("type")
             if stype == "declaration":
                 self._analyze_declaration(stmt)
@@ -60,6 +73,7 @@ class SemanticAnalyzer:
                 print("  [SEMANTICS] 'else' block header -- no semantic checks needed.")
             else:
                 print(f"  [SEMANTICS] Statement type '{stype}' -- no semantic action.")
+            self._active_node = None
 
         # ── summary ─────────────────────────────────────────────────
         if not self.errors:
@@ -70,6 +84,14 @@ class SemanticAnalyzer:
                 print(f"    - {e}")
 
         return len(self.errors) == 0
+
+    @staticmethod
+    def announce_blocked(reason):
+        print()
+        print("─" * 60)
+        print("  STARTING SEMANTIC ANALYSIS")
+        print("─" * 60)
+        print("  [SEMANTICS] Because " + reason + ", I cannot perform semantic checks. Fix the earlier phase and try again.")
 
     # ── evaluate expression to a value ──────────────────────────────
     def _eval_expr(self, expr_tokens):
@@ -89,7 +111,7 @@ class SemanticAnalyzer:
                 return tok.value == "true", TokenType.BOOL_LITERAL
             elif tok.type == TokenType.IDENTIFIER:
                 if tok.value in self.symbol_table:
-                    entry = self.symbol_table[tok.value]
+                    entry = self.symbol_table.lookup(tok.value)
                     ttype_map = {"whole": TokenType.NUMERIC_LITERAL,
                                  "decimal": TokenType.DECIMAL_LITERAL,
                                  "logic": TokenType.BOOL_LITERAL,
@@ -109,7 +131,7 @@ class SemanticAnalyzer:
                     parts.append(tok.value.strip('"'))
                 elif tok.type == TokenType.IDENTIFIER:
                     if tok.value in self.symbol_table:
-                        parts.append(str(self.symbol_table[tok.value]["value"]))
+                        parts.append(str(self.symbol_table.lookup(tok.value)["value"]))
                     else:
                         parts.append(tok.value)
                 elif tok.type == TokenType.ARITH_OP and tok.value == "+":
@@ -133,7 +155,7 @@ class SemanticAnalyzer:
                 expr_str += ")"
             elif tok.type == TokenType.IDENTIFIER:
                 if tok.value in self.symbol_table:
-                    expr_str += str(self.symbol_table[tok.value]["value"])
+                    expr_str += str(self.symbol_table.lookup(tok.value)["value"])
                 else:
                     return None, TokenType.IDENTIFIER
             else:
@@ -173,14 +195,18 @@ class SemanticAnalyzer:
             self.errors.append(f"Type mismatch: '{ident}' is '{dtype}' but value {raw_value} is {val_type_label}")
             print(f"  [SEMANTICS] FATAL ERROR: Variable '{ident}' is declared as '{dtype}', but value {raw_value} is a {val_type_label.upper()}.")
             print(f"  [SEMANTICS] Recovery Strategy: Compiler will discard assignment to prevent memory corruption.")
+            self._annotate(
+                f"Type mismatch: expected {dtype}, received {val_type_label}.",
+                is_error=True,
+                hint="Provide a literal that matches the declared datatype.",
+            )
             return
 
         print(f"  [SEMANTICS] Types match. No coercion needed.")
-
-        # Bind to symbol table
-        self.symbol_table[ident] = {"datatype": dtype, "value": value}
+        record = self.symbol_table.declare(ident, dtype, value)
         print(f"  [SEMANTICS] Binding variable '{ident}' to Symbol Table.")
-        print(f"  [SEMANTICS]   -> Symbol Table Entry: {{ name: '{ident}', type: '{dtype}', value: {value!r} }}")
+        print(f"  [SEMANTICS]   -> Symbol Table Entry: {{ name: '{ident}', type: '{dtype}', value: {value!r}, scope: {record['scope']} }}")
+        self._annotate(f"Bound '{ident}' as {dtype} = {value!r} (scope {record['scope']})")
 
     # ── reassignment ────────────────────────────────────────────────
     def _analyze_reassignment(self, stmt):
@@ -192,10 +218,11 @@ class SemanticAnalyzer:
         print(f"  [SEMANTICS] Reassignment of '{ident}'...")
 
         if ident not in self.symbol_table:
-            self.symbol_table[ident] = {"datatype": "unknown", "value": value}
+            self.symbol_table.assign(ident, value, datatype="unknown")
             print(f"  [SEMANTICS] Warning: '{ident}' was not previously declared. Creating entry with inferred type.")
+            self._annotate(f"'{ident}' inferred as unknown type with value {value!r}")
         else:
-            dtype = self.symbol_table[ident]["datatype"]
+            dtype = self.symbol_table.lookup(ident)["datatype"]
             allowed = self.TYPE_MAP.get(dtype, set())
 
             val_type_label = {
@@ -208,10 +235,16 @@ class SemanticAnalyzer:
             if val_type and val_type not in allowed and val_type != TokenType.IDENTIFIER:
                 self.errors.append(f"Type mismatch on reassignment: '{ident}' is '{dtype}' but new value is {val_type_label}")
                 print(f"  [SEMANTICS] FATAL ERROR: Cannot assign {val_type_label} to '{ident}' (declared as '{dtype}').")
+                self._annotate(
+                    f"Reassignment mismatch on '{ident}': expected {dtype}, got {val_type_label}.",
+                    is_error=True,
+                    hint="Match the new value's type to the variable's declaration.",
+                )
                 return
 
-            self.symbol_table[ident]["value"] = value
+            self.symbol_table.assign(ident, value)
             print(f"  [SEMANTICS] Updated '{ident}' in Symbol Table -> value: {value!r}")
+            self._annotate(f"Updated '{ident}' = {value!r}")
 
     # ── show ────────────────────────────────────────────────────────
     def _analyze_show(self, stmt):
@@ -225,9 +258,15 @@ class SemanticAnalyzer:
             if tok.type == TokenType.IDENTIFIER and tok.value not in self.symbol_table:
                 self.errors.append(f"Undeclared variable '{tok.value}' used in show statement")
                 print(f"  [SEMANTICS] X Undeclared variable '{tok.value}' -- has it been defined?")
+                self._annotate(
+                    f"Undeclared variable '{tok.value}' in output.",
+                    is_error=True,
+                    hint="Declare the variable before using it in show.",
+                )
                 return
 
         print(f"  [SEMANTICS] Output will display: {value!r}")
+        self._annotate(f"Output evaluated to {value!r}")
 
     # ── increase / decrease ─────────────────────────────────────────
     def _analyze_inc_dec(self, stmt):
@@ -240,12 +279,22 @@ class SemanticAnalyzer:
         if ident not in self.symbol_table:
             self.errors.append(f"Undeclared variable '{ident}' in {action}")
             print(f"  [SEMANTICS] X Variable '{ident}' is not declared.")
+            self._annotate(
+                f"Cannot {action} '{ident}' because it was never declared.",
+                is_error=True,
+                hint="Declare the variable before trying to update it.",
+            )
             return
 
-        entry = self.symbol_table[ident]
+        entry = self.symbol_table.lookup(ident)
         if entry["datatype"] not in ("whole", "decimal"):
             self.errors.append(f"Cannot {action} non-numeric variable '{ident}' (type: {entry['datatype']})")
             print(f"  [SEMANTICS] X Cannot {action} variable '{ident}' of type '{entry['datatype']}'.")
+            self._annotate(
+                f"{action.title()} requires a numeric variable but '{ident}' is {entry['datatype']}.",
+                is_error=True,
+                hint="Change the datatype to whole/decimal or remove the {action} statement.",
+            )
             return
 
         delta_val, _ = self._eval_expr(expr)
@@ -255,6 +304,7 @@ class SemanticAnalyzer:
             else:
                 entry["value"] = entry["value"] - delta_val
             print(f"  [SEMANTICS] '{ident}' updated -> new value: {entry['value']!r}")
+            self._annotate(f"{action.title()} applied: '{ident}' is now {entry['value']!r}")
         except Exception:
             print(f"  [SEMANTICS] Could not evaluate {action} expression at compile time.")
 
@@ -269,9 +319,15 @@ class SemanticAnalyzer:
             if tok.type == TokenType.IDENTIFIER and tok.value not in self.symbol_table:
                 self.errors.append(f"Undeclared variable '{tok.value}' in {stype} condition")
                 print(f"  [SEMANTICS] X Undeclared variable '{tok.value}' in condition.")
+                self._annotate(
+                    f"Condition uses undeclared variable '{tok.value}'.",
+                    is_error=True,
+                    hint="Declare the variable before using it in the condition.",
+                )
                 return
 
         print(f"  [SEMANTICS] All variables in condition are declared.")
+        self._annotate("Condition variables are valid.")
 
     # ── step loop ───────────────────────────────────────────────────
     def _analyze_step(self, stmt):
@@ -280,10 +336,20 @@ class SemanticAnalyzer:
         if "iter_var" in stmt and "iter_type" in stmt:
             var = stmt["iter_var"]
             dtype = stmt["iter_type"]
-            self.symbol_table[var] = {"datatype": dtype, "value": 0}
+            self.symbol_table.declare(var, dtype, 0)
             print(f"  [SEMANTICS] Bound loop variable '{var}' as '{dtype}' in Symbol Table.")
+            self._annotate(f"Loop variable '{var}' initialized as {dtype}.")
 
         print(f"  [SEMANTICS] Step loop parameters are valid.")
+        self._annotate("Step loop parameters are valid.")
+
+    def _annotate(self, message, is_error=False, hint=None):
+        if self._active_node is None:
+            return
+        if is_error:
+            self._active_node.mark_error(message, hint)
+        else:
+            self._active_node.add_annotation(message)
 
     # ── helper: expression display ──────────────────────────────────
     @staticmethod

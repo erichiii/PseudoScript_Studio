@@ -22,16 +22,24 @@
 
 import sys
 
-from lexer import Lexer
-from parser import Parser
-from semantic import SemanticAnalyzer
+try:  # Support both package and standalone execution
+    from .lexer import Lexer
+    from .parser import Parser
+    from .semantics import SemanticAnalyzer
+    from .symbol_table import SymbolTable
+except ImportError:  # pragma: no cover - fallback for script execution
+    from lexer import Lexer
+    from parser import Parser
+    from semantics import SemanticAnalyzer
+    from symbol_table import SymbolTable
 
 
 # ═════════════════════════════════════════════════════════════════════
 #  SYMBOL TABLE PRINTER
 # ═════════════════════════════════════════════════════════════════════
-def print_symbol_table(table):
-    if not table:
+def print_symbol_table(symbol_table):
+    records = list(symbol_table.items())
+    if not records:
         print("\n  Symbol Table is empty.")
         return
 
@@ -39,12 +47,19 @@ def print_symbol_table(table):
     print("─" * 60)
     print("  SYMBOL TABLE")
     print("─" * 60)
-    print(f"  {'Name':<20} {'Type':<12} {'Value'}")
-    print(f"  {'─'*20} {'─'*12} {'─'*20}")
-    for name, info in table.items():
+    print(f"  {'Name':<16} {'Type':<10} {'Scope':<5} {'Bytes':<5} {'Value'}")
+    print(f"  {'─'*16} {'─'*10} {'─'*5} {'─'*5} {'─'*20}")
+    for name, info in records:
         dtype = info['datatype']
-        val   = info['value']
-        print(f"  {name:<20} {dtype:<12} {val!r}")
+        val = info['value']
+        scope = info.get('scope', 0)
+        memory = info.get('bytes', 0)
+        print(f"  {name:<16} {dtype:<10} {scope:<5} {memory:<5} {val!r}")
+
+    print("\n  Total Memory per Scope:")
+    for scope, total in symbol_table.memory_per_scope().items():
+        label = "GLOBAL" if scope == 0 else f"LEVEL {scope}"
+        print(f"    - {label}: {total} byte(s)")
     print()
 
 
@@ -55,34 +70,72 @@ def compile_line(source, symbol_table):
     """
     Run a single line/statement of PseudoScript through
     Lexical -> Syntax -> Semantic analysis.
-    Returns True if no errors.
+    Returns a report dictionary with success status.
     """
-    # Phase 1: Lexer
+    report = {"success": False, "source": source}
+
     lexer = Lexer(source.strip())
     tokens = lexer.tokenize()
+    report["tokens"] = tokens
 
     if not tokens:
-        return True  # empty line
+        report["success"] = True
+        return report
 
-    # Phase 2: Parser
+    if lexer.had_errors:
+        Parser.announce_blocked("there's an error found in the lexical analysis phase")
+        SemanticAnalyzer.announce_blocked("the syntax analyzer could not run because lexical analysis failed")
+        return report
+
     parser = Parser(tokens)
-    ast = parser.parse()
+    ast, tree = parser.parse()
+    report["ast"] = ast
+    report["parse_tree"] = tree
 
     if parser.errors:
-        return False
+        SemanticAnalyzer.announce_blocked("the syntax analysis phase reported structural errors")
+        return report
 
-    # Phase 3: Semantic Analyzer
     analyzer = SemanticAnalyzer(symbol_table)
-    ok = analyzer.analyze(ast)
+    ok = analyzer.analyze(ast, tree)
+    report["success"] = ok
 
-    return ok
+    # Annotated parse tree with semantic notes
+    parser.render_parse_tree(show_annotations=True)
+
+    print_symbol_table(symbol_table)
+
+    return report
+
+
+class PseudoScriptCompiler:
+    """Convenience wrapper that preserves the symbol table across compilations."""
+
+    def __init__(self):
+        self.symbol_table = SymbolTable()
+        self._last_report = None
+
+    def compile(self, source):
+        self._last_report = compile_line(source, self.symbol_table)
+        return self._last_report
+
+    def reset(self):
+        self.symbol_table.clear()
+
+    def print_full_report(self):
+        if not self._last_report:
+            return "No compilation has been executed yet."
+        status = "SUCCESS" if self._last_report.get("success") else "FAILED"
+        tokens = self._last_report.get("tokens", [])
+        token_summary = ", ".join(f"{tok.type}:{tok.value}" for tok in tokens) or "<no tokens>"
+        return f"Last compilation {status}. Tokens => {token_summary}"
 
 
 # ═════════════════════════════════════════════════════════════════════
 #  DEMO: RUN PREDEFINED TEST CASES
 # ═════════════════════════════════════════════════════════════════════
 def run_demo():
-    symbol_table = {}
+    symbol_table = SymbolTable()
 
     test_cases = [
         ("Test 1 -- Perfect Assignment (whole)",                 'whole age is 20.'),
@@ -118,7 +171,7 @@ def run_demo():
 #  INTERACTIVE REPL
 # ═════════════════════════════════════════════════════════════════════
 def repl():
-    symbol_table = {}
+    symbol_table = SymbolTable()
 
     banner = """
 ╔══════════════════════════════════════════════════════════════╗
@@ -131,6 +184,11 @@ def repl():
 ║         PseudoScript Compiler Front-End  v1.0               ║
 ║         Type your PseudoScript code below.                  ║
 ╠═════════════════════════════════════════════════════════════ ║
+║  Multi-line Input:                                          ║
+║    - Type your code, pressing Enter between lines           ║
+║    - Type 's' (alone) to submit and compile                 ║
+║    - Type 'q' (alone) to quit the compiler                  ║
+║                                                             ║
 ║  Commands:                                                  ║
 ║    table   -> View the Symbol Table                         ║
 ║    demo    -> Run all demo test cases                       ║
@@ -143,28 +201,39 @@ def repl():
 
     while True:
         try:
-            line = input("ps> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nGoodbye!")
-            break
+            # Get multi-line input from the user
+            print("\nEnter lines of code. Type 's' to submit, or 'q' to quit:")
+            input_lines = []
+            while True:
+                line = input("  ") if input_lines else input("ps> ")
+                if line.lower() == 'q':
+                    print("\nGoodbye!")
+                    return
+                if line == 's':
+                    break
+                input_lines.append(line)
 
-        if not line:
-            continue
+            # Join lines and process
+            user_input = "\n".join(input_lines).strip()
 
-        cmd = line.lower()
+            if not user_input:
+                continue
 
-        if cmd == "exit" or cmd == "quit":
-            print("\nGoodbye!")
-            break
-        elif cmd == "table":
-            print_symbol_table(symbol_table)
-        elif cmd == "demo":
-            run_demo()
-        elif cmd == "clear":
-            symbol_table.clear()
-            print("Symbol Table cleared.")
-        elif cmd == "help":
-            print("""
+            cmd = user_input.lower()
+
+            # Check for built-in commands
+            if cmd == "exit" or cmd == "quit":
+                print("\nGoodbye!")
+                break
+            elif cmd == "table":
+                print_symbol_table(symbol_table)
+            elif cmd == "demo":
+                run_demo()
+            elif cmd == "clear":
+                symbol_table.clear()
+                print("Symbol Table cleared.")
+            elif cmd == "help":
+                print("""
   PseudoScript Language Quick Reference:
   ──────────────────────────────────────
   Data Types:   whole, decimal, logic, text
@@ -181,8 +250,15 @@ def repl():
     show greeting.
     increase score by 10.
 """)
-        else:
-            compile_line(line, symbol_table)
+            else:
+                # Treat the entire input block as one unit
+                full_input = "\n".join(input_lines)
+                print(f"\n  Input:\n{full_input}\n")
+                compile_line(full_input, symbol_table)
+
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye!")
+            break
 
 
 # ═════════════════════════════════════════════════════════════════════

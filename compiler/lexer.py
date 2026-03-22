@@ -9,7 +9,10 @@ Prints every token it finds (Explainability Layer).
 
 import re
 
-from tokens import Token, TokenType
+try:
+    from .tokens import Token, TokenType
+except ImportError:  # pragma: no cover
+    from tokens import Token, TokenType
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -117,12 +120,17 @@ class Lexer:
         self.source = source
         self.tokens = []
         self.unknown_count = 0
+        self.invalid_tokens = []
+        self.had_errors = False
 
     def tokenize(self):
         print()
         print("─" * 60)
         print("  STARTING LEXICAL ANALYSIS")
         print("─" * 60)
+        print("  [LEXER] Hello! I am the Lexical Analyzer. You can call me Lexer! I am responsible for breaking down your input into tokens.")
+        print("  [LEXER] Reading the input...")
+        print("  [LEXER] Generating tokens...")
 
         for match in TOKEN_REGEX.finditer(self.source):
             group_name = match.lastgroup
@@ -141,14 +149,29 @@ class Lexer:
             # ── Explainability output ───────────────────────────────
             if token_type == TokenType.UNKNOWN:
                 self.unknown_count += 1
-                print(f"  [LEXER] Found '{lexeme}'  -> UNKNOWN TOKEN  !!")
+                hint = self._hint_for_unknown(lexeme)
+                self.invalid_tokens.append((lexeme, hint))
+                print(f"  [LEXER] Found '{lexeme}'  -> UNKNOWN TOKEN !!")
+                print(f"           ↳ Hint: {hint}")
             else:
                 print(f"  [LEXER] Found {f'{chr(39)}{lexeme}{chr(39)}':<16} -> Identified as {token_type}")
 
         # ── summary ─────────────────────────────────────────────────
         if self.unknown_count == 0:
-            print(f"\n  Lexical Analysis Complete. 0 Unknown Tokens.")
+            print("\n  [LEXER] Successfully generated tokens: NO ERRORS FOUND.")
         else:
-            print(f"\n  !! Lexical Analysis Complete. {self.unknown_count} Unknown Token(s) found.")
+            self.had_errors = True
+            print("\n  [LEXER] I found the following invalid tokens:")
+            for lexeme, hint in self.invalid_tokens:
+                print(f"    - {lexeme}: {hint}")
+            print("  [LEXER] Please fix the issues above before we can continue.")
 
         return self.tokens
+
+    @staticmethod
+    def _hint_for_unknown(lexeme):
+        if lexeme and not lexeme[0].isalpha():
+            return "Ensure that your identifier starts with a letter and contains only letters, digits, or underscores."
+        if any(ch in lexeme for ch in {'@', '#', '$', '%', '&'}):
+            return "Remove special symbols that are not part of the PseudoScript alphabet."
+        return "Double-check the spelling or remove unsupported characters."
