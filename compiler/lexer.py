@@ -199,6 +199,16 @@ class Lexer:
                 print(f"    - {lexeme}: {hint}")
             print("  [LEXER] Please fix the issues above before we can continue.")
 
+        # ── lexeme table ─────────────────────────────────────────────
+        printable = [t for t in self.tokens if t.type not in (TokenType.INDENT, TokenType.DEDENT)]
+        if printable:
+            print()
+            print("  Lexeme Table:")
+            print(f"  {'Lexeme':<20} {'Token Type'}")
+            print(f"  {'─' * 20} {'─' * 20}")
+            for tok in printable:
+                print(f"  {tok.value:<20} {tok.type}")
+
         return self.tokens
 
     @staticmethod

@@ -53,7 +53,7 @@ class SemanticAnalyzer:
         print("  STARTING SEMANTIC ANALYSIS")
         print("─" * 60)
 
-        print("  [SEMANTICS] Hello! I'm the Semantic Analyzer (you can call me Sage). I'll check meanings, types, and memory bindings.")
+        print("  [SEMANTICS] Hello! I'm the Semantic Analyzer. I'll be checking the meaning of your code -- things like type compatibility, variable declarations, and memory bindings.")
 
         self.parse_tree = parse_tree or []
         self.node_map = node_map or {}
@@ -66,9 +66,9 @@ class SemanticAnalyzer:
 
         # ── summary ─────────────────────────────────────────────────
         if not self.errors:
-            print(f"\n  Semantic Analysis Complete.")
+            print(f"\n  [SEMANTICS] That's everything! Semantic analysis is complete -- no errors found.")
         else:
-            print(f"\n  X Semantic Analysis Complete. {len(self.errors)} error(s) found.")
+            print(f"\n  [SEMANTICS] I've finished semantic analysis, but I found {len(self.errors)} error(s) that need to be fixed:")
             for e in self.errors:
                 print(f"    - {e}")
 
@@ -95,13 +95,13 @@ class SemanticAnalyzer:
         elif stype == "step":
             self._analyze_step(stmt)
         elif stype == "else":
-            print("  [SEMANTICS] 'else' block -- analyzing nested statements...")
+            print("  [SEMANTICS] I'm stepping into the 'else' block now to check its nested statements...")
             self._annotate("Else block header processed.")
             self.symbol_table.push_scope()
             self._analyze_nested_block(stmt.get("block", []))
             self.symbol_table.pop_scope()
         else:
-            print(f"  [SEMANTICS] Statement type '{stype}' -- no semantic action.")
+            print(f"  [SEMANTICS] I don't have a specific semantic check for statement type '{stype}', so I'll skip it.")
 
         self._active_node = previous_node
         self._capture_snapshot(stmt, self._statement_index)
@@ -207,7 +207,7 @@ class SemanticAnalyzer:
 
         value, val_type = self._eval_expr(expr)
 
-        print("  [SEMANTICS] Checking Type Compatibility...")
+        print(f"  [SEMANTICS] I'm currently checking type compatibility for '{ident}'...")
 
         val_type_label = {
             TokenType.NUMERIC_LITERAL: "Numeric",
@@ -217,14 +217,14 @@ class SemanticAnalyzer:
         }.get(val_type, "Expression")
 
         raw_value = self._expr_display(expr)
-        print(f"  [SEMANTICS] Variable '{ident}' is declared as '{dtype}'. Value is {raw_value} ({val_type_label}).")
+        print(f"  [SEMANTICS] Variable '{ident}' is declared as '{dtype}'. The value {raw_value} is {val_type_label}.")
 
         # Type check
         allowed = self.TYPE_MAP.get(dtype, set())
         if val_type and val_type not in allowed and val_type != TokenType.IDENTIFIER:
             self.errors.append(f"Type mismatch: '{ident}' is '{dtype}' but value {raw_value} is {val_type_label}")
-            print(f"  [SEMANTICS] FATAL ERROR: Variable '{ident}' is declared as '{dtype}', but value {raw_value} is a {val_type_label.upper()}.")
-            print(f"  [SEMANTICS] Recovery Strategy: Compiler will discard assignment to prevent memory corruption.")
+            print(f"  [SEMANTICS] Hmm, there's a type mismatch here. '{ident}' was declared as '{dtype}', but the value {raw_value} is a {val_type_label.upper()} -- those two don't match.")
+            print(f"  [SEMANTICS] To avoid storing the wrong kind of data in memory, I'll discard this assignment.")
             self._annotate(
                 f"Type mismatch: expected {dtype}, received {val_type_label}.",
                 is_error=True,
@@ -232,10 +232,10 @@ class SemanticAnalyzer:
             )
             return
 
-        print(f"  [SEMANTICS] Types match. No coercion needed.")
+        print(f"  [SEMANTICS] The types matched -- no coercion needed and no semantic errors here.")
         record = self.symbol_table.declare(ident, dtype, value)
-        print(f"  [SEMANTICS] Binding variable '{ident}' to Symbol Table.")
-        print(f"  [SEMANTICS]   -> Symbol Table Entry: {{ name: '{ident}', type: '{dtype}', value: {value!r}, scope: {record['scope']} }}")
+        print(f"  [SEMANTICS] I'm now binding '{ident}' to the Symbol Table.")
+        print(f"  [SEMANTICS]   -> Entry recorded: {{ name: '{ident}', type: '{dtype}', value: {value!r}, scope: {record['scope']} }}")
         self._annotate(f"Bound '{ident}' as {dtype} = {value!r} (scope {record['scope']})")
 
     # ── reassignment ────────────────────────────────────────────────
@@ -245,11 +245,11 @@ class SemanticAnalyzer:
 
         value, val_type = self._eval_expr(expr)
 
-        print(f"  [SEMANTICS] Reassignment of '{ident}'...")
+        print(f"  [SEMANTICS] I'm looking at a reassignment to '{ident}'...")
 
         if ident not in self.symbol_table:
             self.symbol_table.assign(ident, value, datatype="unknown")
-            print(f"  [SEMANTICS] Warning: '{ident}' was not previously declared. Creating entry with inferred type.")
+            print(f"  [SEMANTICS] Hmm, '{ident}' hasn't been declared yet. I'll go ahead and create an entry for it with an inferred type, but you should declare variables before assigning them.")
             self._annotate(f"'{ident}' inferred as unknown type with value {value!r}")
         else:
             dtype = self.symbol_table.lookup(ident)["datatype"]
@@ -264,7 +264,7 @@ class SemanticAnalyzer:
 
             if val_type and val_type not in allowed and val_type != TokenType.IDENTIFIER:
                 self.errors.append(f"Type mismatch on reassignment: '{ident}' is '{dtype}' but new value is {val_type_label}")
-                print(f"  [SEMANTICS] FATAL ERROR: Cannot assign {val_type_label} to '{ident}' (declared as '{dtype}').")
+                print(f"  [SEMANTICS] There's a type mismatch on this reassignment. '{ident}' was originally declared as '{dtype}', but the new value is {val_type_label} -- I can't allow that.")
                 self._annotate(
                     f"Reassignment mismatch on '{ident}': expected {dtype}, got {val_type_label}.",
                     is_error=True,
@@ -273,7 +273,7 @@ class SemanticAnalyzer:
                 return
 
             self.symbol_table.assign(ident, value)
-            print(f"  [SEMANTICS] Updated '{ident}' in Symbol Table -> value: {value!r}")
+            print(f"  [SEMANTICS] Types are compatible. I've updated '{ident}' in the Symbol Table -- its new value is {value!r}.")
             self._annotate(f"Updated '{ident}' = {value!r}")
 
     # ── show ────────────────────────────────────────────────────────
@@ -282,12 +282,12 @@ class SemanticAnalyzer:
         value, val_type = self._eval_expr(expr)
 
         raw = self._expr_display(expr)
-        print(f"  [SEMANTICS] Output statement: show {raw}")
+        print(f"  [SEMANTICS] I see a 'show' statement -- let me evaluate what it will display: {raw}")
 
         for tok in expr:
             if tok.type == TokenType.IDENTIFIER and tok.value not in self.symbol_table:
                 self.errors.append(f"Undeclared variable '{tok.value}' used in show statement")
-                print(f"  [SEMANTICS] X Undeclared variable '{tok.value}' -- has it been defined?")
+                print(f"  [SEMANTICS] Hold on -- I found a reference to '{tok.value}', but it hasn't been declared yet. I can't output a variable that doesn't exist.")
                 self._annotate(
                     f"Undeclared variable '{tok.value}' in output.",
                     is_error=True,
@@ -295,7 +295,7 @@ class SemanticAnalyzer:
                 )
                 return
 
-        print(f"  [SEMANTICS] Output will display: {value!r}")
+        print(f"  [SEMANTICS] All good! This statement will display: {value!r}")
         self._annotate(f"Output evaluated to {value!r}")
 
     # ── increase / decrease ─────────────────────────────────────────
@@ -304,11 +304,11 @@ class SemanticAnalyzer:
         ident  = stmt["identifier"]
         expr   = stmt["expression"]
 
-        print(f"  [SEMANTICS] {action.capitalize()} operation on '{ident}'...")
+        print(f"  [SEMANTICS] I'm processing an '{action}' operation on '{ident}'...")
 
         if ident not in self.symbol_table:
             self.errors.append(f"Undeclared variable '{ident}' in {action}")
-            print(f"  [SEMANTICS] X Variable '{ident}' is not declared.")
+            print(f"  [SEMANTICS] I can't find '{ident}' in the Symbol Table -- it was never declared. Make sure you declare it before trying to update it.")
             self._annotate(
                 f"Cannot {action} '{ident}' because it was never declared.",
                 is_error=True,
@@ -319,7 +319,7 @@ class SemanticAnalyzer:
         entry = self.symbol_table.lookup(ident)
         if entry["datatype"] not in ("whole", "decimal"):
             self.errors.append(f"Cannot {action} non-numeric variable '{ident}' (type: {entry['datatype']})")
-            print(f"  [SEMANTICS] X Cannot {action} variable '{ident}' of type '{entry['datatype']}'.")
+            print(f"  [SEMANTICS] '{ident}' is of type '{entry['datatype']}', which isn't numeric. I can only {action} whole or decimal variables.")
             self._annotate(
                 f"{action.title()} requires a numeric variable but '{ident}' is {entry['datatype']}.",
                 is_error=True,
@@ -333,22 +333,22 @@ class SemanticAnalyzer:
                 entry["value"] = entry["value"] + delta_val
             else:
                 entry["value"] = entry["value"] - delta_val
-            print(f"  [SEMANTICS] '{ident}' updated -> new value: {entry['value']!r}")
+            print(f"  [SEMANTICS] Done! '{ident}' has been updated -- its new value is {entry['value']!r}.")
             self._annotate(f"{action.title()} applied: '{ident}' is now {entry['value']!r}")
         except Exception:
-            print(f"  [SEMANTICS] Could not evaluate {action} expression at compile time.")
+            print(f"  [SEMANTICS] I wasn't able to evaluate the {action} expression at compile time, but the structure looks valid.")
 
     # ── condition check (if / while) ────────────────────────────────
     def _analyze_condition_block(self, stmt):
         stype = stmt["type"]
         cond  = stmt.get("condition", [])
 
-        print(f"  [SEMANTICS] '{stype}' block -- checking condition variables...")
+        print(f"  [SEMANTICS] I'm checking the condition in this '{stype}' block to make sure all variables are known...")
 
         for tok in cond:
             if tok.type == TokenType.IDENTIFIER and tok.value not in self.symbol_table:
                 self.errors.append(f"Undeclared variable '{tok.value}' in {stype} condition")
-                print(f"  [SEMANTICS] X Undeclared variable '{tok.value}' in condition.")
+                print(f"  [SEMANTICS] I found '{tok.value}' in the condition, but it hasn't been declared. The condition can't be evaluated with an unknown variable.")
                 self._annotate(
                     f"Condition uses undeclared variable '{tok.value}'.",
                     is_error=True,
@@ -356,7 +356,7 @@ class SemanticAnalyzer:
                 )
                 return
 
-        print(f"  [SEMANTICS] All variables in condition are declared.")
+        print(f"  [SEMANTICS] All variables in the condition are declared -- the condition is valid. Now I'll step into the block and check its statements.")
         self._annotate("Condition variables are valid.")
         self.symbol_table.push_scope()
         self._analyze_nested_block(stmt.get("block", []))
@@ -393,20 +393,20 @@ class SemanticAnalyzer:
 
     # ── step loop ───────────────────────────────────────────────────
     def _analyze_step(self, stmt):
-        print("  [SEMANTICS] 'step' loop -- checking loop parameters...")
+        print("  [SEMANTICS] I'm checking the 'step' loop now -- let me verify the loop parameters and initialize the iterator variable...")
 
         self.symbol_table.push_scope()
         if "iter_var" in stmt and "iter_type" in stmt:
             var = stmt["iter_var"]
             dtype = stmt["iter_type"]
             self.symbol_table.declare(var, dtype, 0)
-            print(f"  [SEMANTICS] Bound loop variable '{var}' as '{dtype}' in Symbol Table.")
+            print(f"  [SEMANTICS] I'm binding the loop variable '{var}' as '{dtype}' into the Symbol Table with an initial value of 0.")
             self._annotate(f"Loop variable '{var}' initialized as {dtype}.")
 
         self._analyze_nested_block(stmt.get("block", []))
         self.symbol_table.pop_scope()
 
-        print(f"  [SEMANTICS] Step loop parameters are valid.")
+        print(f"  [SEMANTICS] The step loop parameters look good -- everything checks out.")
         self._annotate("Step loop parameters are valid.")
 
     def _annotate(self, message, is_error=False, hint=None):
