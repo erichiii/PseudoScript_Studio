@@ -13,6 +13,15 @@ except ImportError:  # pragma: no cover
     from tokens import TokenType
 
 
+
+# ─────────────────────────────────────────────────────────────────────
+#  ANSI COLOR HELPERS
+# ─────────────────────────────────────────────────────────────────────
+def _red(msg):    return f"[91m{msg}[0m"
+def _green(msg):  return f"[92m{msg}[0m"
+def _yellow(msg): return f"[93m{msg}[0m"
+def _cyan(msg):   return f"[96m{msg}[0m"
+
 class ParseTreeNode:
     """Node used to visualize and annotate the parse tree."""
 
@@ -52,7 +61,7 @@ class ParseTreeNode:
         # Print error hint if present
         if self.error and self.hint:
             hint_connector = "└─ " if is_last else "├─ "
-            print(f"{prefix}{hint_connector}⚠ Hint: {self.hint}")
+            print(_red(f"{prefix}{hint_connector}⚠ Hint: {self.hint}"))
         
         # Print annotations (semantic info)
         if show_annotations and self.annotations:
@@ -124,7 +133,7 @@ class Parser:
             actual = self._current()
             actual_desc = f"'{actual.value}' ({actual.type})" if actual else "END OF INPUT"
             self.errors.append(f"Expected {lbl} but found {actual_desc}")
-            print(f"  [PARSER] X Expected [{lbl}] but found {actual_desc}")
+            print(_red(f"  [PARSER] X Expected [{lbl}] but found {actual_desc}"))
             if self._active_node is not None:
                 error_node = ParseTreeNode(f"Missing {lbl}")
                 hint = f"Expected {lbl} before {actual_desc}." if actual else f"Expected {lbl} but reached end of input."
@@ -183,18 +192,18 @@ class Parser:
                 error_node = ParseTreeNode("Unexpected token")
                 error_node.mark_error(f"'{tok.value}' cannot start a statement.", "Start with a datatype, identifier, or keyword like 'show'.")
                 self.tree_nodes.append(error_node)
-                print(f"  [PARSER] X Unexpected token '{tok.value}' at start of statement.")
+                print(_red(f"  [PARSER] X Unexpected token '{tok.value}' at start of statement."))
                 self.pos += 1  # Skip to avoid infinite loop
 
         # ── summary ─────────────────────────────────────────────────
         if not self.errors:
-            print("\n  Syntax Analysis Complete. No structural errors.")
+            print(_green("\n  Syntax Analysis Complete. No structural errors."))
         else:
             for w in self.warnings:
-                print(f"  !! {w}")
-            print(f"\n  X Syntax Analysis Complete. {len(self.errors)} error(s) found.")
+                print(_yellow(f"  !! {w}"))
+            print(_red(f"\n  X Syntax Analysis Complete. {len(self.errors)} error(s) found."))
             for e in self.errors:
-                print(f"    - {e}")
+                print(_red(f"    - {e}"))
 
         self.render_parse_tree(show_annotations=False)
         return self.ast, self.tree_nodes
@@ -214,13 +223,13 @@ class Parser:
             skipped.append(self.tokens[self.pos].value)
             self.pos += 1
         if skipped:
-            print(f"  [PARSER] !! Panic Mode Recovery: Skipping unknown token(s): {', '.join(repr(s) for s in skipped)}")
+            print(_yellow(f"  [PARSER] !! Panic Mode Recovery: Skipping unknown token(s): {', '.join(repr(s) for s in skipped)}"))
             self.warnings.append(f"Panic Mode Recovery skipped {len(skipped)} unknown token(s)")
         cleaned = [t for t in self.tokens if t.type != TokenType.UNKNOWN]
         removed = len(self.tokens) - len(cleaned)
         if removed > len(skipped):
             extra = removed - len(skipped)
-            print(f"  [PARSER] !! Panic Mode Recovery: Removed {extra} additional unknown token(s) from stream")
+            print(_yellow(f"  [PARSER] !! Panic Mode Recovery: Removed {extra} additional unknown token(s) from stream"))
             self.warnings.append(f"Panic Mode Recovery removed {extra} additional unknown token(s)")
         self.tokens = cleaned
         self.pos = 0
@@ -231,11 +240,11 @@ class Parser:
             tok = self._advance()
             if node:
                 node.add_child(ParseTreeNode(f"Delimiter: {tok.value}"))
-            print(f"  [PARSER] Found [{TokenType.DELIMITER}] -> Statement properly terminated with '.'")
+            print(_green(f"  [PARSER] Found [{TokenType.DELIMITER}] -> Statement properly terminated with '.'."))
         else:
-            print(f"  [PARSER] !! WARNING: Missing '.' delimiter at the end of this statement.")
-            print(f"  [PARSER]    This would normally cause a syntax error -- every statement must end with a period '.'.")
-            print(f"  [PARSER]    Phrase-Level Recovery: Automatically inserting the missing '.' to continue parsing.")
+            print(_red(f"  [PARSER] !! WARNING: Missing '.' delimiter at the end of this statement."))
+            print(_red(f"  [PARSER]    This would normally cause a syntax error -- every statement must end with a period '.'."))
+            print(_yellow(f"  [PARSER]    Phrase-Level Recovery: Automatically inserting the missing '.' to continue parsing."))
             self.warnings.append("Phrase-Level Recovery: inserted missing '.' delimiter")
             recovery_node = ParseTreeNode("Missing delimiter (auto-inserted)")
             recovery_node.mark_error("Missing '.' at the end of the statement.", "Add a period '.' to properly terminate the statement.")
@@ -285,7 +294,7 @@ class Parser:
         else:
             success = False
             self.errors.append("Expected a value or expression after 'is'")
-            print("  [PARSER] X Expected a value or expression after 'is'")
+            print(_red("  [PARSER] X Expected a value or expression after 'is'"))
 
         self._ensure_delimiter(node)
 
@@ -298,7 +307,7 @@ class Parser:
                 "expression": expr_tokens,
             }
             if not self.errors:
-                print("  [PARSER] Actual structure matches expected rule perfectly.")
+                print(_green("  [PARSER] Actual structure matches expected rule perfectly."))
 
         self._active_node = None
         return stmt, node
@@ -337,7 +346,7 @@ class Parser:
                 "expression": expr_tokens,
             }
             if not self.errors:
-                print("  [PARSER] Actual structure matches expected rule perfectly.")
+                print(_green("  [PARSER] Actual structure matches expected rule perfectly."))
 
         self._active_node = None
         return stmt, node
@@ -369,7 +378,7 @@ class Parser:
                 "expression": expr_tokens,
             }
             if not self.errors:
-                print("  [PARSER] Actual structure matches expected rule perfectly.")
+                print(_green("  [PARSER] Actual structure matches expected rule perfectly."))
 
         self._active_node = None
         return stmt, node
@@ -416,7 +425,7 @@ class Parser:
                 "expression": expr_tokens,
             }
             if not self.errors:
-                print("  [PARSER] Actual structure matches expected rule perfectly.")
+                print(_green("  [PARSER] Actual structure matches expected rule perfectly."))
 
         self._active_node = None
         return stmt, node
@@ -459,7 +468,7 @@ class Parser:
                 node.add_child(self._expression_node("Inline Body", inner))
 
         if not self.errors:
-            print("  [PARSER] Actual structure matches expected rule perfectly.")
+            print(_green("  [PARSER] Actual structure matches expected rule perfectly."))
 
         self._active_node = None
         return stmt, node
@@ -494,7 +503,7 @@ class Parser:
             stmt["block"] = block_stmts
 
         if not self.errors:
-            print("  [PARSER] Actual structure matches expected rule perfectly.")
+            print(_green("  [PARSER] Actual structure matches expected rule perfectly."))
 
         self._active_node = None
         return stmt, node
@@ -522,7 +531,7 @@ class Parser:
             stmt["block"] = block_stmts
 
         if not self.errors:
-            print("  [PARSER] Actual structure matches expected rule perfectly.")
+            print(_green("  [PARSER] Actual structure matches expected rule perfectly."))
 
         self._active_node = None
         return stmt, node
@@ -602,7 +611,7 @@ class Parser:
 
         stmt = {"type": "while", "condition": cond, "block": block_stmts}
         if not self.errors:
-            print("  [PARSER] Actual structure matches expected rule perfectly.")
+            print(_green("  [PARSER] Actual structure matches expected rule perfectly."))
 
         self._active_node = None
         return stmt, node
@@ -661,7 +670,7 @@ class Parser:
         else:
             self.errors.append("Invalid step loop syntax")
             node.mark_error("Step loop syntax is incomplete.", "Use 'step <count> times' or 'step from <a> to <b>'.")
-            print("  [PARSER] X Invalid step loop syntax")
+            print(_red("  [PARSER] X Invalid step loop syntax"))
             self._active_node = None
             return stmt, node
 
@@ -678,7 +687,7 @@ class Parser:
             stmt["block"] = block_stmts
 
         if success and not self.errors:
-            print("  [PARSER] Actual structure matches expected rule perfectly.")
+            print(_green("  [PARSER] Actual structure matches expected rule perfectly."))
 
         self._active_node = None
         return stmt, node
@@ -726,4 +735,4 @@ class Parser:
         print("─" * 60)
         print("  STARTING SYNTAX ANALYSIS")
         print("─" * 60)
-        print("  [PARSER] Because " + reason + ", we failed to parse anything. It is important that your input follow the rules.")
+        print(_red("  [PARSER] Because " + reason + ", we failed to parse anything. It is important that your input follow the rules."))

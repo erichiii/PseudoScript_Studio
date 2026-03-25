@@ -75,6 +75,15 @@ def print_symbol_table(symbol_table, *, records=None, title="SYMBOL TABLE"):
 # ═════════════════════════════════════════════════════════════════════
 #  COMPILER PIPELINE -- runs all three phases
 # ═════════════════════════════════════════════════════════════════════
+def _announce_symbol_table_blocked(reason):
+    print()
+    print("─" * 60)
+    print("  SYMBOL TABLE")
+    print("─" * 60)
+    print(f"  The Symbol Table could not be generated because there were {reason} in a previous phase.")
+    print("  Please fix the errors above and try again.")
+
+
 def compile_line(source, symbol_table):
     """
     Run a single line/statement of PseudoScript through
@@ -94,6 +103,7 @@ def compile_line(source, symbol_table):
     if lexer.had_errors:
         Parser.announce_blocked("there's an error found in the lexical analysis phase")
         SemanticAnalyzer.announce_blocked("the syntax analyzer could not run because lexical analysis failed")
+        _announce_symbol_table_blocked("lexical analysis errors")
         return report
 
     parser = Parser(tokens)
@@ -104,17 +114,19 @@ def compile_line(source, symbol_table):
 
     if parser.errors:
         SemanticAnalyzer.announce_blocked("the syntax analysis phase reported structural errors")
+        _announce_symbol_table_blocked("syntax analysis errors")
         return report
 
     analyzer = SemanticAnalyzer(symbol_table)
     ok = analyzer.analyze(ast, tree, parser.node_map)
     report["success"] = ok
 
-    # Show incremental symbol table snapshots for each statement that changed it
-    for snapshot in analyzer.snapshots:
-        print_symbol_table(symbol_table, records=snapshot["records"], title=f"SYMBOL TABLE ({snapshot['label']})")
-
-    print_symbol_table(symbol_table)
+    if not ok:
+        _announce_symbol_table_blocked("semantic analysis errors")
+    else:
+        # Show incremental symbol table snapshots for each statement that changed it
+        for snapshot in analyzer.snapshots:
+            print_symbol_table(symbol_table, records=snapshot["records"], title="SYMBOL TABLE")
 
     return report
 
@@ -228,7 +240,7 @@ def repl():
                 line = input(prompt)
                 
                 if line.lower() == 'q':
-                    print("\nExiting...\nGoodbye!")
+                    print("\nGoodbye!")
                     return
                 if line == 's':
                     break

@@ -74,6 +74,15 @@ TOKEN_REGEX = re.compile(
 )
 
 # Map regex group names to TokenType constants
+
+# ─────────────────────────────────────────────────────────────────────
+#  ANSI COLOR HELPERS
+# ─────────────────────────────────────────────────────────────────────
+def _red(msg):    return f"[91m{msg}[0m"
+def _green(msg):  return f"[92m{msg}[0m"
+def _yellow(msg): return f"[93m{msg}[0m"
+def _cyan(msg):   return f"[96m{msg}[0m"
+
 GROUP_TO_TOKEN_TYPE = {
     "DATATYPE":        TokenType.DATATYPE,
     "SHOW":            TokenType.SHOW,
@@ -178,8 +187,8 @@ class Lexer:
                     self.unknown_count += 1
                     hint = self._hint_for_unknown(lexeme)
                     self.invalid_tokens.append((lexeme, hint))
-                    print(f"  [LEXER] Found '{lexeme}'  -> UNKNOWN TOKEN !!")
-                    print(f"           ↳ Hint: {hint}")
+                    print(_red(f"  [LEXER] Found '{lexeme}'  -> UNKNOWN TOKEN !!"))
+                    print(_yellow(f"           ↳ Hint: {hint}"))
                 else:
                     print(f"  [LEXER] Found {f'{chr(39)}{lexeme}{chr(39)}':<16} -> Identified as {token_type}")
 
@@ -191,13 +200,13 @@ class Lexer:
 
         # ── summary ─────────────────────────────────────────────────
         if self.unknown_count == 0:
-            print("\n  [LEXER] Successfully generated tokens: NO ERRORS FOUND.")
+            print(_green("\n  [LEXER] Successfully generated tokens: NO ERRORS FOUND."))
         else:
             self.had_errors = True
-            print("\n  [LEXER] I found the following invalid tokens:")
+            print(_red("\n  [LEXER] I found the following invalid tokens:"))
             for lexeme, hint in self.invalid_tokens:
-                print(f"    - {lexeme}: {hint}")
-            print("  [LEXER] Please fix the issues above before we can continue.")
+                print(_red(f"    - {lexeme}: {hint}"))
+            print(_red("  [LEXER] Please fix the issues above before we can continue."))
 
         # ── lexeme table ─────────────────────────────────────────────
         printable = [t for t in self.tokens if t.type not in (TokenType.INDENT, TokenType.DEDENT)]
