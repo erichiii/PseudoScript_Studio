@@ -74,7 +74,7 @@ function App() {
           onExitLanding={() => setCurrentPage("landing")} />
       )}
       {currentPage === "compiler" && renderCompiler}
-      {currentPage === "cheatsheet" && <CheatsheetView onBack={() => setCurrentPage("desktop")} />}
+      {currentPage === "cheatsheet" && <CheatsheetView onBack={() => setCurrentPage("desktop")} onGoToCompiler={() => setCurrentPage("compiler")} />}
       {currentPage === "game" && <GameModeView onBack={() => setCurrentPage("desktop")} />}
     </>
   );

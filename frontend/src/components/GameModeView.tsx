@@ -72,6 +72,53 @@ const astSamples = [
   ],
 ];
 
+type AstTreeNodeProps = {
+  node: { id: number; label: string; parent: number | null };
+  astNodes: { id: number; label: string; parent: number | null }[];
+  astPlaced: number[];
+  astDragged: number | null;
+  onDrop: (parentId: number) => void;
+  onDragStart: (id: number) => void;
+  astChildren: (parentId: number) => { id: number; label: string; parent: number | null }[];
+};
+
+function AstTreeNode({ node, astNodes, astPlaced, astDragged, onDrop, onDragStart, astChildren }: AstTreeNodeProps) {
+  const children = astChildren(node.id);
+  return (
+    <div className="flex flex-col items-center">
+      <div
+        className={`rounded-lg border px-4 py-2 text-sm font-mono font-semibold mb-2 ${
+          astPlaced.includes(node.id)
+            ? "border-[#b7ffc7] bg-[#1a2d1a] text-[#b7ffc7]"
+            : "border-white/20 bg-white/10 text-white/90"
+        }`}
+        onDragOver={(e) => {
+          if (!astPlaced.includes(node.id)) e.preventDefault();
+        }}
+        onDrop={() => {
+          if (!astPlaced.includes(node.id)) onDrop(node.id);
+        }}
+      >
+        {node.label}
+      </div>
+      <div className="flex gap-4">
+        {children.map((child) => (
+          <AstTreeNode
+            key={child.id}
+            node={child}
+            astNodes={astNodes}
+            astPlaced={astPlaced}
+            astDragged={astDragged}
+            onDrop={onDrop}
+            onDragStart={onDragStart}
+            astChildren={astChildren}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const GameModeView = ({ onBack }: GameModeViewProps) => {
   // Token Tumble state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -460,54 +507,6 @@ const GameModeView = ({ onBack }: GameModeViewProps) => {
               <div className="min-h-[2em] text-sm text-white/80">{pipelineFeedback}</div>
             </div>
           )}
-
-        // AST Tree Node component for drag-and-drop
-        type AstTreeNodeProps = {
-          node: { id: number; label: string; parent: number | null };
-          astNodes: { id: number; label: string; parent: number | null }[];
-          astPlaced: number[];
-          astDragged: number | null;
-          onDrop: (parentId: number) => void;
-          onDragStart: (id: number) => void;
-          astChildren: (parentId: number) => { id: number; label: string; parent: number | null }[];
-        }
-
-        function AstTreeNode({ node, astNodes, astPlaced, astDragged, onDrop, onDragStart, astChildren }: AstTreeNodeProps) {
-          const children = astChildren(node.id);
-          return (
-            <div className="flex flex-col items-center">
-              <div
-                className={`rounded-lg border px-4 py-2 text-sm font-mono font-semibold mb-2 ${
-                  astPlaced.includes(node.id)
-                    ? "border-[#b7ffc7] bg-[#1a2d1a] text-[#b7ffc7]"
-                    : "border-white/20 bg-white/10 text-white/90"
-                }`}
-                onDragOver={(e) => {
-                  if (!astPlaced.includes(node.id)) e.preventDefault();
-                }}
-                onDrop={() => {
-                  if (!astPlaced.includes(node.id)) onDrop(node.id);
-                }}
-              >
-                {node.label}
-              </div>
-              <div className="flex gap-4">
-                {children.map((child) => (
-                  <AstTreeNode
-                    key={child.id}
-                    node={child}
-                    astNodes={astNodes}
-                    astPlaced={astPlaced}
-                    astDragged={astDragged}
-                    onDrop={onDrop}
-                    onDragStart={onDragStart}
-                    astChildren={astChildren}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        }
         </section>
       </div>
     </div>

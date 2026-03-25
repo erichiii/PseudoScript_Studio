@@ -235,6 +235,7 @@ const LexerTab = ({
             <div
               key={`${line}-${index}`}
               className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/85"
+              style={{ animationName: "bubbleFadeIn", animationDuration: "0.35s", animationFillMode: "both", animationDelay: `${index * 0.07}s` }}
             >
               <span className="text-[0.6rem] uppercase tracking-[0.4em] text-white/50">Lexer</span>
               <p className="mt-1 whitespace-pre-wrap font-mono text-xs text-white/90">{line}</p>
@@ -282,12 +283,13 @@ const LexerTab = ({
         <div className="space-y-2">
           {statusLogs.map((line, index) => {
             const mentionsRecovery = /recovery/i.test(line);
+            const mentionsHint = /^↳\s*hint/i.test(line) || /^hint[:\s]/i.test(line);
             const isLastMessage = index === statusLogs.length - 1;
 
             let bubbleClasses = "border border-white/10 bg-white/5 text-white/85";
             let labelColor = "text-white/60";
 
-            if (mentionsRecovery) {
+            if (mentionsRecovery || mentionsHint) {
               bubbleClasses = "border border-amber-400/40 bg-amber-400/10 text-amber-100";
               labelColor = "text-amber-200";
             } else if (isLastMessage && hasLexicalError) {
@@ -304,6 +306,7 @@ const LexerTab = ({
               <div
                 key={`status-${line}-${index}`}
                 className={clsx("rounded-2xl px-4 py-3 text-sm", bubbleClasses)}
+                style={{ animationName: "bubbleFadeIn", animationDuration: "0.35s", animationFillMode: "both", animationDelay: `${(logs.length + index) * 0.07}s` }}
               >
                 <span className={clsx("text-[0.6rem] uppercase tracking-[0.4em]", labelColor)}>Lexer</span>
                 <p className="mt-1 whitespace-pre-wrap font-mono text-xs">{line}</p>
@@ -316,18 +319,51 @@ const LexerTab = ({
   );
 };
 
-const classifyLogLine = (line: string): "error" | "success" | "info" => {
+const classifyLogLine = (line: string): "error" | "success" | "warning" | "info" => {
+  // ── Success FIRST so "no errors" lines are never misclassified as error ──
   if (
     /no\s+\w*\s*errors?/i.test(line) ||
     /no structural errors?/i.test(line) ||
     /completed|success/i.test(line) ||
     /types? match/i.test(line) ||
     /no coercion needed/i.test(line) ||
-    /variables? .*declared/i.test(line)
+    /variables? .*declared/i.test(line) ||
+    /types are compatible/i.test(line) ||
+    /all good/i.test(line) ||
+    /binding.*symbol table/i.test(line) ||
+    /i'm now binding/i.test(line) ||
+    /entry recorded/i.test(line) ||
+    /everything checks out/i.test(line) ||
+    /matches expected rule/i.test(line) ||
+    /initialized/i.test(line) ||
+    /has been updated/i.test(line) ||
+    /done!/i.test(line) ||
+    /properly terminated/i.test(line)
   ) {
     return "success";
   }
-  if (/error|mismatch|unexpected|invalid/i.test(line)) {
+  // ── Warning: yellow messages from the backend (_yellow()) ──
+  if (
+    /i'll discard/i.test(line) ||
+    /discard this assignment/i.test(line) ||
+    /inferred type/i.test(line) ||
+    /wasn't able to evaluate/i.test(line) ||
+    /go ahead and create an entry/i.test(line) ||
+    /phrase-level recovery/i.test(line) ||
+    /panic mode recovery/i.test(line)
+  ) {
+    return "warning";
+  }
+  // ── Error: red messages from the backend (_red()) ──
+  if (
+    /error|mismatch|unexpected|invalid/i.test(line) ||
+    /can't allow/i.test(line) ||
+    /can't find.*symbol table/i.test(line) ||
+    /can't output/i.test(line) ||
+    /never declared/i.test(line) ||
+    /isn't numeric/i.test(line) ||
+    /hasn't been declared yet.*can't/i.test(line)
+  ) {
     return "error";
   }
   if (/found|accept/i.test(line)) {
@@ -336,12 +372,15 @@ const classifyLogLine = (line: string): "error" | "success" | "info" => {
   return "info";
 };
 
-const parserBubbleClass = (severity: "error" | "success" | "info") => {
+const parserBubbleClass = (severity: "error" | "success" | "warning" | "info") => {
   if (severity === "error") {
     return "border-rose-500/40 bg-rose-500/5 text-rose-100";
   }
   if (severity === "success") {
     return "border-emerald-500/30 bg-emerald-500/5 text-emerald-100";
+  }
+  if (severity === "warning") {
+    return "border-amber-400/40 bg-amber-400/10 text-amber-100";
   }
   return "border-white/15 bg-black/50 text-white/85";
 };
@@ -655,9 +694,18 @@ const ParserTab = ({
                   cleaned || line,
                 ]
               : [cleaned || line];
+          const parserLabelColor =
+            severity === "error" ? "text-rose-200" :
+            severity === "success" ? "text-emerald-200" :
+            severity === "warning" ? "text-amber-200" :
+            "text-white/60";
             return (
-              <div key={`${cleaned}-${index}`} className={clsx("rounded-2xl border px-4 py-3", bubbleClasses)}>
-                <span className="text-[0.6rem] uppercase tracking-[0.4em] text-white/60">Parser</span>
+              <div
+                key={`${cleaned}-${index}`}
+                className={clsx("rounded-2xl border px-4 py-3", bubbleClasses)}
+                style={{ animationName: "bubbleFadeIn", animationDuration: "0.35s", animationFillMode: "both", animationDelay: `${index * 0.07}s` }}
+              >
+                <span className={clsx("text-[0.6rem] uppercase tracking-[0.4em]", parserLabelColor)}>Parser</span>
                 {contentLines.map((text, idx) => (
                   <p key={`${cleaned}-${index}-line-${idx}`} className="mt-1 whitespace-pre-wrap font-mono text-xs">
                     {text}
@@ -729,16 +777,34 @@ const SemanticTab = ({
   if (hasLogs) {
     return (
       <div className="space-y-4">
+        {failureMessage && (
+          <div
+            className="rounded-2xl border border-rose-500/40 bg-rose-500/5 px-4 py-3"
+            style={{ animationName: "bubbleFadeIn", animationDuration: "0.35s", animationFillMode: "both", animationDelay: "0s" }}
+          >
+            <span className="text-[0.6rem] uppercase tracking-[0.4em] text-rose-200">Semantic</span>
+            <p className="mt-1 whitespace-pre-wrap font-mono text-xs text-rose-100">{failureMessage}</p>
+          </div>
+        )}
         <div className="space-y-2">
           {groupedLogs.map((text, index) => {
             const lines = text.split("\n");
             const firstLine = lines[0] ?? text;
             const severity = classifyLogLine(firstLine);
             const bubbleClasses = parserBubbleClass(severity);
-            const formattedText = failureMessage && severity === "error" ? failureMessage : formatSemanticText(text);
+            const labelColor =
+              severity === "error" ? "text-rose-200" :
+              severity === "success" ? "text-emerald-200" :
+              severity === "warning" ? "text-amber-200" :
+              "text-white/60";
+            const formattedText = formatSemanticText(text);
             return (
-              <div key={`semantic-${index}`} className={clsx("rounded-2xl border px-4 py-3", bubbleClasses)}>
-                <span className="text-[0.6rem] uppercase tracking-[0.4em] text-white/60">Semantic</span>
+              <div
+                key={`semantic-${index}`}
+                className={clsx("rounded-2xl border px-4 py-3", bubbleClasses)}
+                style={{ animationName: "bubbleFadeIn", animationDuration: "0.35s", animationFillMode: "both", animationDelay: `${(failureMessage ? 1 : 0) * 0.1 + index * 0.07}s` }}
+              >
+                <span className={clsx("text-[0.6rem] uppercase tracking-[0.4em]", labelColor)}>Semantic</span>
                 <p className="mt-1 whitespace-pre-wrap font-mono text-xs">{formattedText}</p>
               </div>
             );
@@ -873,14 +939,23 @@ const SymbolTableTab = ({ data, success }: { data: SymbolTableData | null; succe
 
       <div>
         <p className="text-xs uppercase tracking-[0.4em] text-white/40">Scopes</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {data.scopes.map((scope) => (
-            <div key={scope.level} className="rounded-2xl border border-white/10 bg-[#13182c] px-4 py-3">
-              <p className="text-sm font-semibold text-white">{scope.label}</p>
-              <p className="text-xs text-white/60">Level {scope.level}</p>
-              <p className="text-xs text-white/60">Memory: {scope.memory} bytes</p>
-            </div>
-          ))}
+        <div className="mt-2 overflow-hidden rounded-2xl border border-white/10 bg-[#0e1222]">
+          <table className="w-full text-left text-[0.75rem]">
+            <thead className="bg-white/5 text-white/60">
+              <tr>
+                <th className="px-4 py-2 font-semibold">Scope Level</th>
+                <th className="px-4 py-2 font-semibold">Total Space</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.scopes.map((scope) => (
+                <tr key={scope.level} className="border-t border-white/5 text-white/80">
+                  <td className="px-4 py-2 font-semibold">{scope.label}</td>
+                  <td className="px-4 py-2">{scope.memory} bytes</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -1098,6 +1173,7 @@ const splitCompilerLog = (log: string): {
     semanticLogs: [] as string[],
   };
   let currentPhase: "lexer" | "parser" | "semantic" | null = null;
+  let inLexemeTable = false;
 
   const detectPhase = (line: string): "lexer" | "parser" | "semantic" | null => {
     const upper = line.toUpperCase();
@@ -1145,6 +1221,14 @@ const splitCompilerLog = (log: string): {
       ) {
         return;
       }
+      // Filter lexeme table output — already shown in the UI's dedicated table
+      if (/^Lexeme Table/i.test(cleaned) || /^Lexeme\s+Token/i.test(cleaned)) {
+        inLexemeTable = true;
+        return;
+      }
+      if (inLexemeTable) {
+        return;
+      }
       cleaned = cleaned.replace(/^\[LEXER\]\s*/i, "").trim();
 
       const isStatusLine =
@@ -1155,7 +1239,9 @@ const splitCompilerLog = (log: string): {
         /^Lexer Error/i.test(cleaned) ||
         /^Error/i.test(cleaned) ||
         /RECOVERY/i.test(cleaned) ||
-        /PLEASE FIX/i.test(cleaned);
+        /PLEASE FIX/i.test(cleaned) ||
+        /^↳\s*hint/i.test(cleaned) ||
+        /^hint[:\s]/i.test(cleaned);
       if (isStatusLine) {
         buckets.lexerStatusLogs.push(cleaned);
         return;

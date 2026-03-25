@@ -2,19 +2,30 @@ import CheatsheetIcon from "../../../assets/images/cheatsheet_icon.png";
 
 type CheatsheetViewProps = {
   onBack: () => void;
+  onGoToCompiler?: () => void;
 };
 
-const CheatsheetView = ({ onBack }: CheatsheetViewProps) => {
+const CheatsheetView = ({ onBack, onGoToCompiler }: CheatsheetViewProps) => {
   return (
     <div className="min-h-screen w-full bg-[#0f071c] text-white px-4 py-8">
       <div className="mx-auto flex max-w-5xl flex-col gap-8">
         <header className="flex flex-col gap-2">
-          <button
-            onClick={onBack}
-            className="self-start text-xs uppercase tracking-[0.5em] text-white/50 hover:text-white transition"
-          >
-            ← desktop
-          </button>
+          <div className="flex items-center justify-between">
+            <button
+              onClick={onBack}
+              className="text-xs uppercase tracking-[0.5em] text-white/50 hover:text-white transition"
+            >
+              ← desktop
+            </button>
+            {onGoToCompiler && (
+              <button
+                onClick={onGoToCompiler}
+                className="rounded-xl bg-gradient-to-r from-[#c7b7ff] to-[#ffd9e2] px-4 py-2 text-xs font-semibold text-[#291022] transition hover:brightness-110"
+              >
+                Try in Compiler →
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-4">
             <img src={CheatsheetIcon} alt="Cheatsheet" className="h-12 w-12" />
             <div>
