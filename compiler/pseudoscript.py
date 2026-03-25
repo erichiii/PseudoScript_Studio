@@ -184,32 +184,35 @@ def run_demo():
 def repl():
     symbol_table = SymbolTable()
 
-    banner = """
-╔══════════════════════════════════════════════════════════════╗
-║         ____                     __     ____        _       ║
-║        / __ \\___  ___ __ _____  / /__  / __/_______(_)__  __║
-║       / /_/ (_-< / -_) // / _ \\/ / _ \\_\\ \\/ __/ __/ / _ \\/ _║
-║      / .___/___/ \\__/\\_,_/\\_,_/_/\\___/___/\\__/_/ /_/ .__/\\__║
-║     /_/                                           /_/       ║
-║                                                             ║
-║         PseudoScript Compiler Front-End  v1.0               ║
-║         Type your PseudoScript code below.                  ║
-╠═════════════════════════════════════════════════════════════ ║
-║  Multi-line Input:                                          ║
-║    - Type your code, pressing Enter between lines           ║
-║    - Type 's' (alone) to submit and compile                 ║
-║    - Type 'q' (alone) to quit the compiler                  ║
-║    - Type '<<' to step out one indent level                 ║
-║    - Type 'clear indent' to reset indentation               ║
-║                                                             ║
-║  Commands:                                                  ║
-║    table   -> View the Symbol Table                         ║
-║    demo    -> Run all demo test cases                       ║
-║    clear   -> Clear the Symbol Table                        ║
-║    help    -> Show this help message                        ║
-║    exit    -> Quit the compiler                             ║
-╚══════════════════════════════════════════════════════════════╝
-"""
+    banner = (
+        "\n"
+        "╔══════════════════════════════════════════════════════════════╗\n"
+        "║   ____                      __     _____           _       __ \n"
+        r"   / __ \________  __  ______/ /___ / ___/__________(_)___  / /_" "\n"
+        r"  / /_/ / ___/ _ \/ / / / __  / __ \__ \/ ___/ ___/ / __ \/ __/" "\n"
+        r" / ____(__  )  __/ /_/ / /_/ / /_/ /__/ / /__/ /  / / /_/ / /_  " "\n"
+        r"/_/   /____/\___/\__,_/\__,_/\____/____/\___/_/  /_/ .___/\__/  " "\n"
+        r"                                                  /_/           " "\n"
+        "║                                                             ║\n"
+        "║    Find how compilers work and code like you're writing     ║\n"
+        "║                         a story                             ║\n"
+        "║                                                             ║\n"
+        "╠═════════════════════════════════════════════════════════════║\n"
+        "║  Multi-line Input:                                          ║\n"
+        "║    - Type your code, pressing Enter between lines           ║\n"
+        "║    - Type 's' (alone) to submit and compile                 ║\n"
+        "║    - Type 'q' (alone) to quit the compiler                  ║\n"
+        "║    - Type '<<' to step out one indent level                 ║\n"
+        "║    - Type 'clear indent' to reset indentation               ║\n"
+        "║                                                             ║\n"
+        "║  Commands:                                                  ║\n"
+        "║    table   -> View the Symbol Table                         ║\n"
+        "║    demo    -> Run all demo test cases                       ║\n"
+        "║    clear   -> Clear the Symbol Table                        ║\n"
+        "║    help    -> Show this help message                        ║\n"
+        "║    exit    -> Quit the compiler                             ║\n"
+        "╚══════════════════════════════════════════════════════════════╝\n"
+    )
     print(banner)
 
     while True:
@@ -225,7 +228,7 @@ def repl():
                 line = input(prompt)
                 
                 if line.lower() == 'q':
-                    print("\nGoodbye!")
+                    print("\nExiting...\nGoodbye!")
                     return
                 if line == 's':
                     break
@@ -315,7 +318,9 @@ def repl():
                 # Treat the entire input block as one unit
                 full_input = "\n".join(input_lines)
                 print(f"\n  Input:\n{full_input}\n")
+                symbol_table.clear()
                 compile_line(full_input, symbol_table)
+                symbol_table.clear()
 
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")

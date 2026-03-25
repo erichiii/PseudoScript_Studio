@@ -233,12 +233,14 @@ class Parser:
                 node.add_child(ParseTreeNode(f"Delimiter: {tok.value}"))
             print(f"  [PARSER] Found [{TokenType.DELIMITER}] -> Statement properly terminated with '.'")
         else:
+            print(f"  [PARSER] !! WARNING: Missing '.' delimiter at the end of this statement.")
+            print(f"  [PARSER]    This would normally cause a syntax error -- every statement must end with a period '.'.")
+            print(f"  [PARSER]    Phrase-Level Recovery: Automatically inserting the missing '.' to continue parsing.")
             self.warnings.append("Phrase-Level Recovery: inserted missing '.' delimiter")
-            recovery_node = ParseTreeNode("Missing delimiter")
-            recovery_node.mark_error("Missing '.' at the end of the statement.", "Add a period to terminate the statement.")
+            recovery_node = ParseTreeNode("Missing delimiter (auto-inserted)")
+            recovery_node.mark_error("Missing '.' at the end of the statement.", "Add a period '.' to properly terminate the statement.")
             if node:
                 node.add_child(recovery_node)
-            print(f"  [PARSER] !! Phrase-Level Recovery: Missing '.' at end of statement -- auto-inserted.")
 
     @staticmethod
     def _expression_node(label, expr_tokens):
